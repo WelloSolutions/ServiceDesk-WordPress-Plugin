@@ -1,0 +1,16 @@
+{
+  "files": {
+    "main.css": "./static/css/main.eee09f64.css",
+    "main.js": "./static/js/main.9c19dd9e.js",
+    "static/js/453.55d844c8.chunk.js": "./static/js/453.55d844c8.chunk.js",
+    "static/media/servicedesk_banner.png": "./static/media/servicedesk_banner.4fb6dd706f73bae1bede.png",
+    "index.html": "./index.html",
+    "main.eee09f64.css.map": "./static/css/main.eee09f64.css.map",
+    "main.9c19dd9e.js.map": "./static/js/main.9c19dd9e.js.map",
+    "453.55d844c8.chunk.js.map": "./static/js/453.55d844c8.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.eee09f64.css",
+    "static/js/main.9c19dd9e.js"
+  ]
+}
