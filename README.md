@@ -2,9 +2,9 @@
 ![Logo](https://wello.solutions/wp-content/uploads/2023/12/logo-wello-white.png)
 
 
-# ServiceDesk React App
+# ServiceDesk WordPress Plugin
 
-ServiceDesk React App is a comprehensive application designed to streamline and manage all your service desk related needs. Built as a React application, this app is geared towards creating seamless experiences. From generating tickets and work orders to handling installations and beyond, this tool offers a full suite of features to ensure efficient and effective service management. Additionally, it supports creating a WordPress plugin, making it even more versatile for your integration needs.
+ServiceDesk WordPress Plugin is a comprehensive application designed to streamline and manage all your service desk-related needs. Built as a React application, this app is geared towards creating seamless experiences. From generating tickets and work orders to handling installations and beyond, this tool offers a full suite of features to ensure efficient and effective service management. Additionally, it supports creating a WordPress plugin, making it even more versatile for your integration needs.
 
 ## Features
 
