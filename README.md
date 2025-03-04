@@ -36,20 +36,6 @@ Access a comprehensive list of all registered users with relevant details.
 ## Acknowledgements
 
  - [Wello Service Desk](https://servicedesk.wello.solutions)
- - [Wello Service Desk API](https://servicedeskapi.wello.solutions)
-## Deployment
-
-First, install the dependencies:
-
-```bash
-npm install
-```
-
-Then, start the development server:
-
-```bash
-  npm start
-```
 
 
 ## Authors
