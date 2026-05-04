@@ -7,11 +7,11 @@ import { ToastContainer, toast } from 'react-toastify';
 import { setPrimaryTheme } from "../utils/setTheme";
 
 const Login = () => {
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('rememberedEmail') || '');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem('rememberedEmail')));
   const [selectedLang, setSelectedLang] = useState('en'); // Selected in <select>
   const navigate = useNavigate();
   const { login } = useAuth();

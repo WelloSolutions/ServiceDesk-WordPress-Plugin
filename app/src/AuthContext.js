@@ -1,6 +1,6 @@
-import axios from "axios";
 import { createContext, useState, useContext, useEffect } from "react";
 import i18n from "./i18n";
+import { loginWithWelloServiceDesk } from "./services/welloAuthService";
 
 const AuthContext = createContext();
 
@@ -44,26 +44,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       if (!email || !password) throw new Error("All fields must be filled out.");
-      if (!window.welloServiceDesk?.restUrl || !window.welloServiceDesk?.loginNonce) {
-        throw new Error("Authentication configuration is missing.");
-      }
 
       const authEmail = email.trim();
-      const url = `${window.welloServiceDesk.restUrl}auth/login`;
-
-      const response = await axios.post(
-        url,
-        {
-          email: authEmail,
-          password,
-          nonce: window.welloServiceDesk.loginNonce,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await loginWithWelloServiceDesk(authEmail, password);
 
       if (response?.data) {
         const { firstname, lastname, id, db_language_iso_code, auth_token } = response.data;

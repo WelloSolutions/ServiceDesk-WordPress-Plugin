@@ -1,5 +1,5 @@
 import axios from 'axios';
-const auth = JSON.parse(sessionStorage.getItem('auth'));
+const auth = JSON.parse(localStorage.getItem('auth'));
 const WELLO_API_URL = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions';
 
 

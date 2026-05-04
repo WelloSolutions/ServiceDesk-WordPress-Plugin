@@ -1,11 +1,11 @@
 // src/pages/PasswordUpdate.js
-import axios from 'axios';
 import { useState, useRef } from 'react';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { requestPasswordChange, verifyPasswordChange } from '../services/welloAuthService';
 
 function maskEmail(email) {
   if (!email.includes('@')) return email;
@@ -33,6 +33,7 @@ const PasswordUpdate = () => {
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showOTPModal, setShowOTPModal] = useState(false);
   const [otpToken, setOtpToken] = useState('');
+  const [passwordChangeAuthToken, setPasswordChangeAuthToken] = useState('');
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef([]);
 
@@ -76,26 +77,7 @@ const PasswordUpdate = () => {
 
     try {
       setIsLoading(true);
-      const restUrl = window.welloServiceDesk?.restUrl;
-      const passwordNonce = window.welloServiceDesk?.passwordNonce;
-
-      if (!restUrl || !passwordNonce) {
-        throw new Error(t('update_password_page_err_authentication_missing'));
-      }
-
-      const response = await axios.post(
-        `${restUrl}auth/password/request-change`,
-        {
-          email: auth.authEmail,
-          current_password: currentPassword,
-          nonce: passwordNonce,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const { response, authToken } = await requestPasswordChange(auth.authEmail, currentPassword);
 
       if (!response?.data || !response.data.otp_token) {
         setCurrentPassword('');
@@ -105,18 +87,15 @@ const PasswordUpdate = () => {
       }
 
       setOtpToken(response.data.otp_token);
+      setPasswordChangeAuthToken(authToken);
       setShowOTPModal(true);
       setError(null);
-      setIsLoading(false);
-
-      // Step 3: OTP token received, continue flow
-      setOtpToken(response.otp_token);
-      setShowOTPModal(true);
       setIsLoading(false);
     } catch (err) {
       console.error('Password update flow error:', err);
       setError(err.message || t('update_password_page_err_failed'));
       setSuccessMessage(null);
+      setIsLoading(false);
     }
 
   };
@@ -133,29 +112,17 @@ const PasswordUpdate = () => {
   };
 
   const handleOTPSubmit = async () => {
-    const restUrl = window.welloServiceDesk?.restUrl;
-    const passwordNonce = window.welloServiceDesk?.passwordNonce;
-
-    if (!restUrl || !passwordNonce) {
+    if (!passwordChangeAuthToken) {
       setError(t('update_password_page_err_failed'));
       return;
     }
 
     try {
-      const response = await axios.put(
-        `${restUrl}auth/password/verify-change`,
-        {
-          otp_token: otpToken,
-          otp_code: otpDigits.join(""),
-          new_password: newPassword,
-          nonce: passwordNonce,
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const response = await verifyPasswordChange(passwordChangeAuthToken, {
+        otp_token: otpToken,
+        otp_code: otpDigits.join(""),
+        new_password: newPassword,
+      });
 
       if (response?.data?.auth_token) {
         updateAuthToken(response.data.auth_token);
@@ -166,6 +133,7 @@ const PasswordUpdate = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
+      setPasswordChangeAuthToken('');
       setTimeout(() => {
         logout();
         navigate('/login');
