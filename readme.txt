@@ -99,7 +99,7 @@ Yes, it supports WordPress multisite installations.
 
 == Source Code ==
 
-https://github.com/WelloSolutions/WP-ServiceDesk-Plugin
+https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin/
 
 == Build Process ==
 
@@ -141,7 +141,7 @@ Compliance and documentation improvements.
 
 == Support ==
 
-https://github.com/WelloSolutions/WP-ServiceDesk-Plugin/issues
+https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin/issues
 
 == License ==
 
