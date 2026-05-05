@@ -1,5 +1,5 @@
 <?php
-if (! defined('ABSPATH')) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
@@ -18,11 +18,11 @@ function wello_servicedesk_admin_menu()
 
     add_submenu_page(
         'wello-servicedesk-settings',
-        __('Generate Access Token', 'wello-servicedesk-api'),
-        __('Generate Token', 'wello-servicedesk-api'),
+        __('Connect to ServiceDesk', 'wello-servicedesk-api'),
+        __('Connect', 'wello-servicedesk-api'),
         'manage_options',
         'wello-servicedesk-generate-token',
-        'wello_servicedesk_api_render_access_token_page'
+        'wello_servicedesk_render_api_connection_page' // ✅ FIXED
     );
 
     add_submenu_page(

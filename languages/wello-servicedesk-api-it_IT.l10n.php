@@ -1,0 +1,5 @@
+<?php
+if (!defined('ABSPATH')) {
+    exit;
+}
+return ['project-id-version'=>'Wello ServiceDesk API','language'=>'it_IT','content-type'=>'text/plain; charset=UTF-8','plural-forms'=>'nplurals=2; plural=(n != 1);','language-team'=>'Italian','po-revision-date'=>'2026-05-05 12:18+0000','x-generator'=>'Loco https://localise.biz/','messages'=>['Configure your ServiceDesk integration settings below.'=>'Configura le impostazioni di integrazione del ServiceDesk qui sotto.','Connect'=>'Connetti','Connect to ServiceDesk'=>'Connetti al ServiceDesk','Connected to ServiceDesk'=>'Connesso al ServiceDesk','General Settings'=>'Impostazioni generali','Main Page Banner'=>'Banner pagina principale','Manage Connection'=>'Gestisci connessione','Not connected'=>'Non connesso','Primary Color'=>'Colore principale','Primary Logo'=>'Logo principale','Secondary Logo'=>'Logo secondario','Service Desk'=>'Service Desk','Service Desk Settings'=>'Impostazioni Service Desk','ServiceDesk Connection'=>'Connessione ServiceDesk','Support Page'=>'Pagina di supporto','Support Page Content'=>'Contenuto della pagina di supporto','Verification Code'=>'Codice di verifica']];

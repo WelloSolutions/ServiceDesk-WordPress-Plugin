@@ -4,150 +4,176 @@ Tags: servicedesk, helpdesk, support, ticketing, api
 Requires at least: 6.0
 Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 1.0.6
+Stable tag: 1.0.7
 Donate link: https://wello.solutions/
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Securely connect WordPress to Wello ServiceDesk platform with OTP authentication and ticket management.
+Securely connect WordPress to the Wello ServiceDesk platform with OTP authentication and ticket management.
 
 == Description ==
 
-Our plugin integrates WordPress with the Wello ServiceDesk API as a client interface:
+Wello ServiceDesk API integrates WordPress with the external Wello ServiceDesk platform as a client interface.
 
-* OTP-based login and verification with external Wello ServiceDesk service
-* Access token generation and refresh (external service only)
-* React-powered ServiceDesk dashboard inside WordPress
-* Admin configuration panel (API endpoint, client secrets, sync behavior)
-* Ticket and work order listing + detail views
-* Translation-ready (en, fr, nl, it, pl, de, es)
+Key features:
+
+* OTP-based authentication via external Wello ServiceDesk service
+* Secure access token generation and management
+* React-powered ServiceDesk dashboard embedded in WordPress
+* Admin configuration panel for branding and integration settings
+* Ticket and work order listing with detailed views
+* Fully translation-ready with multiple language support
 
 Requires a valid Wello ServiceDesk account and API credentials.
 
 == Important: WordPress Authentication Separation ==
 
-**This plugin maintains complete separation between WordPress authentication and external service authentication:**
+This plugin maintains complete separation between WordPress authentication and external service authentication:
 
-✓ No WordPress users are created from external service accounts
-✓ No WordPress login/session is established from external credentials or tokens
-✓ No WordPress roles, capabilities, or access are granted based on external service authentication
-✓ External auth tokens are managed client-side (browser localStorage) only
-✓ The plugin functions strictly as a client interface to the Wello ServiceDesk API
-✓ WordPress user management and authentication remain under full WordPress admin control
+* No WordPress users are created from external service accounts
+* No WordPress login/session is established using external credentials or tokens
+* No WordPress roles or capabilities are granted based on external authentication
+* External authentication is handled entirely by the Wello ServiceDesk platform
+* WordPress user management remains fully independent
 
-Users authenticate directly with the external Wello ServiceDesk service through the plugin interface. 
-This is a completely separate authentication system from WordPress.
+This plugin acts strictly as a client interface to the external service.
 
 == External Services ==
 
-This plugin connects to the Wello ServiceDesk API to provide service desk functionality.
+This plugin connects to the Wello ServiceDesk API.
 
-**Service Used:** Wello ServiceDesk API (https://servicedeskapi.wello.solutions)
-- **Purpose:** Authentication, ticket management, work orders, equipment tracking, documents, and user data synchronization.
-- **Data Sent:** User email and password for login (one-time during token generation), OTP codes for verification. No sensitive data is stored in WordPress.
-- **When:** Only when users log in or perform actions in the service desk interface.
-- **Terms of Service:** https://wello.solutions/terms-of-service
-- **Privacy Policy:** https://wello.solutions/privacy-note
+Service: https://servicedeskapi.wello.solutions
+
+Purpose:
+Authentication, ticket management, work orders, equipment tracking, and related operations.
+
+Data transmitted:
+* Email and password (used only during login request)
+* OTP verification codes
+* API requests for ticket and service data
+
+Data handling:
+* No passwords are stored in WordPress
+* Access tokens are stored securely as WordPress options
+* No WordPress user data is shared with the external service
+
+Terms of Service: https://wello.solutions/terms-of-service
+Privacy Policy: https://wello.solutions/privacy-note
 
 == Installation ==
 
-1. Upload the plugin folder to `/wp-content/plugins/`.
-2. Activate the plugin in the WordPress **Plugins** page.
-3. Navigate to **Settings → Wello ServiceDesk**.
-4. Enter API URL and ServiceDesk credentials.
-5. Save and open **ServiceDesk** from the menu.
+1. Upload the plugin folder to `/wp-content/plugins/`
+2. Activate the plugin through the Plugins screen in WordPress
+3. Go to **Service Desk → Settings**
+4. Configure branding and integration options
+5. Click **Connect** to generate an access token
 
 == Frequently Asked Questions ==
 
 = Do I need a Wello ServiceDesk account? =
-Yes. A Wello ServiceDesk account is required to use this plugin.
+Yes, a valid Wello ServiceDesk account is required.
 
-= How is user data handled? =
-Passwords are never stored in WordPress. Users authenticate directly with the external Wello ServiceDesk service. 
-Only temporary authorization tokens are used for external API calls and stored client-side.
+= Does this plugin create WordPress users? =
+No. The plugin does not create or manage WordPress users.
 
-= Does this create WordPress users? =
-No. This plugin does not create or manage WordPress users. It acts as a client interface to the external Wello ServiceDesk service. 
-WordPress user management remains completely separate.
+= Does it log users into WordPress? =
+No. WordPress authentication is completely separate.
 
-= Does the external service access my WordPress account? =
-No. The plugin maintains complete separation between WordPress and external service authentication. 
-The external service cannot create, modify, or access WordPress users or accounts.
+= Where is the access token stored? =
+It is stored securely in WordPress options and can be cleared anytime.
 
-= Can this work on multisite? =
-Yes, it is compatible with multisite installations (admin settings are network/site scoped depending on configuration).
+= Can the external service access my WordPress data? =
+No. The plugin does not expose WordPress users or authentication data.
+
+= Is this plugin translation-ready? =
+Yes. The plugin is fully internationalization-ready and includes translations for multiple languages.
+
+== Internationalization ==
+
+This plugin is fully translation-ready using the `wello-servicedesk-api` text domain.
+
+Included languages:
+* English (en_US)
+* French (fr_FR)
+* German (de_DE)
+* Spanish (es_ES)
+* Italian (it_IT)
+* Dutch (nl_NL)
+* Polish (pl_PL)
+* Portuguese (pt_PT)
+
+Translation files are located in the `/languages/` directory.
 
 == Source Code and Build Process ==
 
-The minified JavaScript and CSS files in this plugin are generated from source code available in the `app/` directory.
+Frontend assets are built using React.
 
-**Source Files Location:** `app/src/` directory
-- React components and JavaScript source code
-- CSS stylesheets  
-- Localization files (en, fr, nl, it, pl, de, es)
+Source files:
+`app/src/`
 
-**Build Process:**
-1. Navigate to the `app/` directory
-2. Run `npm install` to install dependencies (requires Node.js and npm)
-3. Run `npm run build` to generate production assets in `app/build/static/`
+Build process:
 
-**Generated Files:** `app/build/static/`
-- Minified CSS: `app/build/static/css/main.*.css`
-- Minified JavaScript: `app/build/static/js/main.*.js`
-- Chunk files: `app/build/static/js/*.chunk.js` (for code splitting)
+1. Navigate to `app/`
+2. Run `npm install`
+3. Run `npm run build`
 
-**Development Mode:**
-- Run `npm start` to start the development server at http://localhost:3000
-- Useful for testing and development before building
+Production assets:
+`app/build/static/`
 
-Source code repository: https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin
+Includes:
+* Minified JavaScript
+* Minified CSS
+* Code-split chunks
+
+Development:
+Run `npm start` for local development server.
+
+Repository:
+https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin
 
 == Screenshots ==
 
 1. Admin settings page
-2. OTP login screen
-3. Embedded ServiceDesk dashboard
+2. ServiceDesk connection (OTP login)
+3. Embedded dashboard
 4. Ticket detail view
 
 == Changelog ==
 
+= 1.0.7 =
+* Improved token handling and connection flow
+* Removed duplicate token storage
+* Fixed connection status display after token removal
+* Refactored settings page for better UX and compliance
+* Enhanced security and sanitization
+* Added full localization support and translation files
+
 = 1.0.6 =
-* Enhanced documentation for WordPress authentication separation.
-* Clarified that plugin functions as external service client only.
-* Improved source code and build process documentation.
+* Documentation improvements for authentication separation
 
 = 1.0.3 =
-* Initial release with core API integration and React ServiceDesk UI.
+* Initial release
 
 == Upgrade Notice ==
 
-= 1.0.6 =
-Updated documentation to clarify WordPress authentication separation.
-
-= 1.0.3 =
-Initial stable release.
+= 1.0.7 =
+Improved security, connection handling, and localization support.
 
 == Support ==
 
-Report bugs or request features:
+For issues or feature requests:
 https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin/issues
 
 == Additional Notes ==
 
-* This plugin acts as a CLIENT for the external Wello ServiceDesk API
-* WordPress authentication and external service authentication are completely separate
-* No WordPress users, roles, or capabilities are affected by this plugin
-* Production assets are in `build/static/` and `app/build/static/`
-* Source app in `app/src/` and plugin PHP in root directory
-
-Local development:
-1. cd app/
-2. npm install
-3. npm run build (for production build)
-4. npm start (for development with hot reload)
+* This plugin acts as a client for the Wello ServiceDesk API
+* WordPress authentication is not modified or extended
+* No WordPress users or roles are affected
+* React frontend is bundled in production build
+* All sensitive operations are handled externally
 
 == License ==
 
 GPLv2 or later.
 
-All bundled third-party libraries are GPL-compatible.
+All included libraries are GPL-compatible.

@@ -1,5 +1,5 @@
 <?php
-if (! defined('ABSPATH')) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
@@ -8,42 +8,55 @@ if (! defined('ABSPATH')) {
  */
 function wello_servicedesk_settings_page()
 {
-    echo '<div class="wrap">';
-    echo '<h1>' . esc_html__('Service Desk Settings', 'wello-servicedesk-api') . '</h1>';
-    echo '<form method="post" action="' . esc_url(admin_url('options.php')) . '">';
-    settings_fields('wello_servicedesk_options_group');
-    do_settings_sections('wello-servicedesk-settings');
-    submit_button();
-    echo '</form>';
-    echo '</div>';
+    if (!current_user_can('manage_options')) {
+        return;
+    }
+    ?>
+    <div class="wrap">
+        <h1><?php echo esc_html__('Service Desk Settings', 'wello-servicedesk-api'); ?></h1>
+
+        <form method="post" action="<?php echo esc_url(admin_url('options.php')); ?>">
+            <?php
+            settings_fields('wello_servicedesk_options_group');
+            do_settings_sections('wello-servicedesk-settings');
+            submit_button();
+            ?>
+        </form>
+    </div>
+    <?php
 }
 
+/**
+ * Settings fields list (TOKEN REMOVED)
+ */
 function wello_servicedesk_settings_fields()
 {
     return array(
-        'wello_servicedesk_token',
         'wello_logo_primary',
         'wello_logo_secondary',
         'wello_color_primary',
         'wello_bg_image',
-        'wello_access_token',
         'wello_support_page_content',
     );
 }
 
+/**
+ * Sanitizers
+ */
 function wello_servicedesk_settings_sanitizers()
 {
     return array(
-        'wello_servicedesk_token'    => 'sanitize_text_field',
         'wello_logo_primary'         => 'esc_url_raw',
         'wello_logo_secondary'       => 'esc_url_raw',
         'wello_color_primary'        => 'sanitize_hex_color',
         'wello_bg_image'             => 'esc_url_raw',
-        'wello_access_token'         => 'sanitize_text_field',
         'wello_support_page_content' => 'wp_kses_post',
     );
 }
 
+/**
+ * Register settings
+ */
 function wello_servicedesk_register_settings()
 {
     $sanitizers = wello_servicedesk_settings_sanitizers();
@@ -54,25 +67,33 @@ function wello_servicedesk_register_settings()
             $field,
             array(
                 'type'              => 'string',
-                'sanitize_callback' => isset($sanitizers[$field]) ? $sanitizers[$field] : 'sanitize_text_field',
+                'sanitize_callback' => isset($sanitizers[$field])
+                    ? $sanitizers[$field]
+                    : 'sanitize_text_field',
             )
         );
     }
 }
 
+/**
+ * Add settings fields
+ */
 function wello_servicedesk_add_settings_fields()
 {
     add_settings_section(
         'wello_servicedesk_section',
         __('General Settings', 'wello-servicedesk-api'),
-        null,
+        function () {
+            echo '<p>' . esc_html__('Configure your ServiceDesk integration settings below.', 'wello-servicedesk-api') . '</p>';
+        },
         'wello-servicedesk-settings'
     );
 
+    // ✅ Connection Status instead of Token field
     add_settings_field(
-        'wello_servicedesk_token',
-        __('Access Token', 'wello-servicedesk-api'),
-        'wello_servicedesk_token_callback',
+        'wello_connection_status',
+        __('ServiceDesk Connection', 'wello-servicedesk-api'),
+        'wello_servicedesk_connection_status_callback',
         'wello-servicedesk-settings',
         'wello_servicedesk_section'
     );
@@ -111,7 +132,7 @@ function wello_servicedesk_add_settings_fields()
 }
 
 /**
- * Register settings and settings fields.
+ * Init settings
  */
 function wello_servicedesk_settings_init()
 {
@@ -120,50 +141,61 @@ function wello_servicedesk_settings_init()
 }
 add_action('admin_init', 'wello_servicedesk_settings_init');
 
-function wello_servicedesk_handle_access_token_submission()
+/**
+ * ✅ Connection status display (NEW)
+ */
+function wello_servicedesk_connection_status_callback()
 {
-    if (! wello_servicedesk_is_post_request() || ! isset($_POST['access_token'])) {
-        return;
+    $token = get_option('wello_servicedesk_token', '');
+
+    if (!empty($token)) {
+        echo '<span style="color:green;font-weight:bold;">✔ ' . esc_html__('Connected to ServiceDesk', 'wello-servicedesk-api') . '</span>';
+    } else {
+        echo '<span style="color:red;font-weight:bold;">✖ ' . esc_html__('Not connected', 'wello-servicedesk-api') . '</span>';
     }
 
-    check_admin_referer('wello_set_access_token_nonce');
+    echo '<br><br>';
 
-    $token = wello_servicedesk_post_text('access_token');
-    update_option('wello_servicedesk_token', $token);
-    update_option('wello_access_token', $token);
+    echo '<a href="' . esc_url(admin_url('admin.php?page=wello-servicedesk-generate-token')) . '" class="button button-secondary">';
+    echo esc_html__('Manage Connection', 'wello-servicedesk-api');
+    echo '</a>';
+
+    echo '<p class="description">';
+    echo esc_html__('Connect your site to the external Wello ServiceDesk platform. This does not affect WordPress users or authentication.', 'wello-servicedesk-api');
+    echo '</p>';
 }
 
-function wello_servicedesk_token_callback()
-{
-    wello_servicedesk_handle_access_token_submission();
-
-    $token = get_option('wello_servicedesk_token', '') ?: get_option('wello_access_token', '');
-    $generate_url = admin_url('admin.php?page=wello-servicedesk-generate-token');
-
-    echo '<input type="text" readonly name="wello_servicedesk_token" value="' . esc_attr($token) . '" class="regular-text">';
-    echo ' <a href="' . esc_url($generate_url) . '" class="button button-secondary">' . esc_html__('Generate Access Token', 'wello-servicedesk-api') . '</a>';
-    echo '<p><small>' . esc_html__('Generate your access token, then save your changes to enable secure access and apply your configuration.', 'wello-servicedesk-api') . '</small></p>';
-}
-
+/**
+ * Media field helper
+ */
 function wello_servicedesk_media_setting_field($option_name, $button_label, $image_alt)
 {
     $image_url = esc_url(get_option($option_name, ''));
+    ?>
+    <input type="text" name="<?php echo esc_attr($option_name); ?>" value="<?php echo esc_attr($image_url); ?>" class="regular-text" id="<?php echo esc_attr($option_name); ?>">
 
-    echo '<input type="text" name="' . esc_attr($option_name) . '" value="' . esc_attr($image_url) . '" class="regular-text" id="' . esc_attr($option_name) . '">';
-    echo ' <button type="button" class="button upload-media" data-target="' . esc_attr($option_name) . '">' . esc_html($button_label) . '</button>';
-    echo '<p><small>' . esc_html__('Image should be maximum 2MB.', 'wello-servicedesk-api') . '</small></p>';
+    <button type="button" class="button upload-media" data-target="<?php echo esc_attr($option_name); ?>">
+        <?php echo esc_html($button_label); ?>
+    </button>
 
-    if (! empty($image_url)) {
-        echo '<div style="margin-top:10px;"><img src="' . esc_url($image_url) . '" alt="' . esc_attr($image_alt) . '" style="max-width:150px;height:auto;border:1px solid #ccc;padding:5px;"></div>';
-    }
+    <p class="description"><?php echo esc_html__('Image should be maximum 2MB.', 'wello-servicedesk-api'); ?></p>
+
+    <?php if (!empty($image_url)) : ?>
+        <div style="margin-top:10px;">
+            <img src="<?php echo esc_url($image_url); ?>" alt="<?php echo esc_attr($image_alt); ?>" style="max-width:150px;height:auto;border:1px solid #ccc;padding:5px;">
+        </div>
+    <?php endif;
 }
 
+/**
+ * Field callbacks
+ */
 function wello_logo_primary_callback()
 {
     wello_servicedesk_media_setting_field(
         'wello_logo_primary',
         __('Select Image', 'wello-servicedesk-api'),
-        __('Logo Primary', 'wello-servicedesk-api')
+        __('Primary Logo', 'wello-servicedesk-api')
     );
 }
 
@@ -172,16 +204,17 @@ function wello_logo_secondary_callback()
     wello_servicedesk_media_setting_field(
         'wello_logo_secondary',
         __('Select Image', 'wello-servicedesk-api'),
-        __('Logo Secondary', 'wello-servicedesk-api')
+        __('Secondary Logo', 'wello-servicedesk-api')
     );
 }
 
 function wello_color_primary_callback()
 {
     $color = get_option('wello_color_primary', '#003327');
-
-    echo '<input type="color" name="wello_color_primary" value="' . esc_attr($color) . '" id="wello_color_primary">';
-    echo '<p><small>' . esc_html__('Select the primary color for the service desk.', 'wello-servicedesk-api') . '</small></p>';
+    ?>
+    <input type="color" name="wello_color_primary" value="<?php echo esc_attr($color); ?>">
+    <p class="description"><?php echo esc_html__('Select the primary color for the service desk.', 'wello-servicedesk-api'); ?></p>
+    <?php
 }
 
 function wello_bg_image_callback()

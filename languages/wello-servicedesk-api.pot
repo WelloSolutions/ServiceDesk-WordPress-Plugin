@@ -3,7 +3,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Wello ServiceDesk API\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2025-10-28 14:03+0000\n"
+"POT-Creation-Date: 2026-05-05 11:34+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: \n"
@@ -16,203 +16,191 @@ msgstr ""
 "X-Loco-Version: 2.8.0; wp-6.8.3; php-8.2.12\n"
 "X-Domain: wello-servicedesk-api"
 
-#: wello-servicedesk-api.php:159
-msgid "Access Token"
+#: includes/admin/access-token-page.php:33
+msgid "API token cleared successfully."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:104
-msgid "Access token generated successfully."
+#: includes/admin/access-token-page.php:138
+msgid "API token generated successfully."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:129
-msgid "Access token has been cleared successfully."
+#: includes/admin/access-token-page.php:161
+msgid "API Token:"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:144
-msgid "Access Token:"
-msgstr ""
-
-#: wello_servicedesk_generate_token_page.php:50
-msgid "An error occurred"
-msgstr ""
-
-#: wello_servicedesk_generate_token_page.php:153
+#: includes/admin/access-token-page.php:167
 msgid "Are you sure you want to clear the access token?"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:94
-#, php-format
-msgid "Attempts left: %s."
+#: includes/admin/settings.php:225
+msgid "Background Image"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:154
-msgid "Clear Access Token"
+#: includes/admin/access-token-page.php:168
+msgid "Clear Token"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:188
-msgid "Confirm OTP"
+#: includes/admin/settings.php:87
+msgid "Configure your ServiceDesk integration settings below."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:40
-#: wello_servicedesk_generate_token_page.php:84
-msgid "Connection error. Please try again."
+#: includes/admin/admin-menu.php:22
+msgid "Connect"
 msgstr ""
 
-#: wello-servicedesk-api.php:36
-msgid "CSS file not found:"
+#: includes/admin/admin-menu.php:21
+msgid "Connect to ServiceDesk"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:48
-msgid "Email or password not valid. Please try again. You can try 3 times."
-msgstr ""
-
-#: wello-servicedesk-api.php:157
-msgid "General Settings"
-msgstr ""
-
-#: wello-servicedesk-api.php:120 wello-servicedesk-api.php:178
-msgid "Generate Access Token"
-msgstr ""
-
-#: wello-servicedesk-api.php:121
-msgid "Generate Token"
-msgstr ""
-
-#: wello-servicedesk-api.php:179
+#: includes/admin/settings.php:164
 msgid ""
-"Generate your access token, then save your changes to enable secure access "
-"and apply your configuration."
+"Connect your site to the external Wello ServiceDesk platform. This does not "
+"affect WordPress users or authentication."
+msgstr ""
+
+#: includes/admin/settings.php:152
+msgid "Connected to ServiceDesk"
+msgstr ""
+
+#. Description of the plugin
+msgid ""
+"Connects WordPress to the external Wello ServiceDesk platform via API. No "
+"interaction with WordPress authentication."
+msgstr ""
+
+#: includes/admin/access-token-page.php:177
+msgid "Email (ServiceDesk Account)"
+msgstr ""
+
+#: includes/admin/settings.php:85
+msgid "General Settings"
 msgstr ""
 
 #. Author URI of the plugin
 msgid "https://wello.solutions/"
 msgstr ""
 
-#: wello-servicedesk-api.php:186 wello-servicedesk-api.php:196
-#: wello-servicedesk-api.php:206
+#: includes/admin/settings.php:181
 msgid "Image should be maximum 2MB."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:91
-msgid "Invalid OTP code."
+#: includes/admin/access-token-page.php:19
+msgid "Insufficient permissions."
 msgstr ""
 
-#: wello-servicedesk-api.php:60
-msgid "JS file not found:"
-msgstr ""
-
-#: wello-servicedesk-api.php:162
+#: includes/admin/settings.php:127
 msgid "Main Page Banner"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:93
-msgid "Max attempts reached. Try again in 24 hours."
+#: includes/admin/settings.php:160
+msgid "Manage Connection"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:185
-msgid "OTP Code"
+#: includes/admin/settings.php:154
+msgid "Not connected"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:53
-msgid "OTP requested successfully."
+#: includes/admin/access-token-page.php:182
+msgid "Password (External Service)"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:96
-msgid "OTP verification failed."
+#: includes/admin/settings.php:119
+msgid "Primary Color"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:175
-msgid "Password"
-msgstr ""
-
-#: wello-servicedesk-api.php:160
+#: includes/admin/settings.php:103 includes/admin/settings.php:198
 msgid "Primary Logo"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:178
-msgid "Request OTP"
+#: includes/admin/access-token-page.php:187
+msgid "Request Verification Code"
 msgstr ""
 
-#: support-page-editor.php:40
+#: includes/admin/support-page.php:42
 msgid "Save Content"
 msgstr ""
 
-#: wello-servicedesk-api.php:161
+#: includes/admin/settings.php:111 includes/admin/settings.php:207
 msgid "Secondary Logo"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:124
-msgid "Security check failed while clearing the token."
-msgstr ""
-
-#: wello_servicedesk_generate_token_page.php:20
-#: wello_servicedesk_generate_token_page.php:64
-msgid "Security check failed."
-msgstr ""
-
-#: wello-servicedesk-api.php:185 wello-servicedesk-api.php:195
-#: wello-servicedesk-api.php:205
+#: includes/admin/settings.php:197 includes/admin/settings.php:206
+#: includes/admin/settings.php:224
 msgid "Select Image"
 msgstr ""
 
-#: wello-servicedesk-api.php:85 wello-servicedesk-api.php:112
+#: includes/admin/settings.php:216
+msgid "Select the primary color for the service desk."
+msgstr ""
+
+#: includes/page-template.php:43 includes/admin/admin-menu.php:13
 msgid "Service Desk"
 msgstr ""
 
-#. Description of the plugin
-msgid "Service Desk for field service companies."
-msgstr ""
-
-#: wello-servicedesk-api.php:111 wello-servicedesk-api.php:141
+#: includes/admin/settings.php:16 includes/admin/admin-menu.php:12
 msgid "Service Desk Settings"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:146
-msgid "Set Access Token"
+#: includes/admin/settings.php:95
+msgid "ServiceDesk Connection"
 msgstr ""
 
-#: wello-servicedesk-api.php:130
+#: includes/admin/access-token-page.php:113
+msgid "Session expired. Try again."
+msgstr ""
+
+#: includes/admin/admin-menu.php:31
 msgid "Support Page"
 msgstr ""
 
-#: support-page-editor.php:21 wello-servicedesk-api.php:129
+#: includes/admin/support-page.php:20 includes/admin/admin-menu.php:30
 msgid "Support Page Content"
 msgstr ""
 
-#: support-page-editor.php:15
+#: includes/admin/support-page.php:65
 msgid "Support page content saved."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:46
-msgid ""
-"Thank you for your interest in the Wello Service desk plugin. You need to be "
-"an administrator to set up this plugin."
+#: includes/admin/access-token-page.php:56
+msgid "Token cleared."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:94
-msgid "Unknown"
+#: includes/admin/access-token-page.php:100
+msgid "Unable to request verification code."
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:171
-msgid "Username"
+#: includes/admin/access-token-page.php:197
+msgid "Verification Code"
+msgstr ""
+
+#: includes/admin/access-token-page.php:96
+msgid "Verification code sent."
+msgstr ""
+
+#: includes/admin/access-token-page.php:142
+msgid "Verification failed."
+msgstr ""
+
+#: includes/admin/access-token-page.php:202
+msgid "Verify Code"
 msgstr ""
 
 #. Author of the plugin
 msgid "Wello"
 msgstr ""
 
-#: wello_servicedesk_generate_token_page.php:118
-msgid "Wello Service Desk - Access Token Setup"
-msgstr ""
-
-#. Name of the plugin
-msgid "Wello Service Desk API"
-msgstr ""
-
-#: wello-servicedesk-api.php:67
+#: includes/page-template.php:11
 msgid "Wello Service Desk Template"
 msgstr ""
 
-#: support-page-editor.php:8 wello_servicedesk_generate_token_page.php:8
+#. Name of the plugin
+msgid "Wello ServiceDesk API"
+msgstr ""
+
+#: includes/admin/access-token-page.php:154
+msgid "Wello ServiceDesk Connection"
+msgstr ""
+
+#: includes/admin/support-page.php:12
 msgid "You do not have sufficient permissions to access this page."
 msgstr ""

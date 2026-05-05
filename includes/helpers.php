@@ -1,5 +1,5 @@
 <?php
-if (! defined('ABSPATH')) {
+if (!defined('ABSPATH')) {
     exit;
 }
 
@@ -17,11 +17,14 @@ function wello_get_option($option, $default = '', $type = 'string')
 
     switch ($type) {
         case 'url':
-            return esc_url($value);
+            return esc_url_raw($value);
+
         case 'hex_color':
             return sanitize_hex_color($value);
+
         case 'html':
             return wp_kses_post($value);
+
         case 'text':
         default:
             return sanitize_text_field($value);
@@ -33,21 +36,21 @@ function wello_get_option($option, $default = '', $type = 'string')
  */
 function wello_servicedesk_is_post_request()
 {
-    // Using WordPress function for better compatibility
-    return isset($_SERVER['REQUEST_METHOD']) && 'POST' === $_SERVER['REQUEST_METHOD'];
+    return isset($_SERVER['REQUEST_METHOD']) &&
+        'POST' === strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])));
 }
 
 /**
  * Read a sanitized text field from POST data.
  *
- * @param string $key     The key to look for.
- * @param mixed  $default Default value if key not found.
- * @param array  $post_data The POST data array.
+ * @param string $key
+ * @param mixed  $default
+ * @param array  $post_data
  * @return mixed
  */
 function wello_servicedesk_post_text($key, $default = '', $post_data = array())
 {
-    if (empty($post_data) || ! isset($post_data[$key])) {
+    if (empty($post_data) || !isset($post_data[$key])) {
         return $default;
     }
 
@@ -57,20 +60,20 @@ function wello_servicedesk_post_text($key, $default = '', $post_data = array())
 /**
  * Verify a nonce submitted through POST data.
  *
- * @param string $field     The nonce field name.
- * @param string $action    The nonce action.
- * @param array  $post_data The POST data array.
+ * @param string $field
+ * @param string $action
+ * @param array  $post_data
  * @return bool
  */
 function wello_servicedesk_verify_post_nonce($field, $action, $post_data = array())
 {
-    if (empty($post_data) || ! isset($post_data[$field])) {
+    if (empty($post_data) || !isset($post_data[$field])) {
         return false;
     }
 
-    // Validate the nonce before sanitization.
     $nonce = wp_unslash($post_data[$field]);
-    if (! wp_verify_nonce($nonce, $action)) {
+
+    if (!wp_verify_nonce($nonce, $action)) {
         return false;
     }
 
@@ -86,5 +89,13 @@ function wello_servicedesk_admin_notice($message, $type = 'success')
         return;
     }
 
-    echo '<div class="notice notice-' . esc_attr($type) . '"><p>' . esc_html($message) . '</p></div>';
+    $allowed_types = array('success', 'error', 'warning', 'info');
+
+    if (!in_array($type, $allowed_types, true)) {
+        $type = 'success';
+    }
+
+    echo '<div class="notice notice-' . esc_attr($type) . ' is-dismissible">';
+    echo '<p>' . esc_html($message) . '</p>';
+    echo '</div>';
 }
