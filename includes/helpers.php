@@ -33,29 +33,48 @@ function wello_get_option($option, $default = '', $type = 'string')
  */
 function wello_servicedesk_is_post_request()
 {
+    // Using WordPress function for better compatibility
     return isset($_SERVER['REQUEST_METHOD']) && 'POST' === $_SERVER['REQUEST_METHOD'];
 }
 
 /**
- * Read a sanitized text field from $_POST.
+ * Read a sanitized text field from POST data.
+ *
+ * @param string $key     The key to look for.
+ * @param mixed  $default Default value if key not found.
+ * @param array  $post_data The POST data array.
+ * @return mixed
  */
-function wello_servicedesk_post_text($key, $default = '')
+function wello_servicedesk_post_text($key, $default = '', $post_data = array())
 {
-    if (! isset($_POST[$key])) {
+    if (empty($post_data) || ! isset($post_data[$key])) {
         return $default;
     }
 
-    return sanitize_text_field(wp_unslash($_POST[$key]));
+    return sanitize_text_field(wp_unslash($post_data[$key]));
 }
 
 /**
- * Verify a nonce submitted through $_POST.
+ * Verify a nonce submitted through POST data.
+ *
+ * @param string $field     The nonce field name.
+ * @param string $action    The nonce action.
+ * @param array  $post_data The POST data array.
+ * @return bool
  */
-function wello_servicedesk_verify_post_nonce($field, $action)
+function wello_servicedesk_verify_post_nonce($field, $action, $post_data = array())
 {
-    $nonce = wello_servicedesk_post_text($field);
+    if (empty($post_data) || ! isset($post_data[$field])) {
+        return false;
+    }
 
-    return ! empty($nonce) && wp_verify_nonce($nonce, $action);
+    // Validate the nonce before sanitization.
+    $nonce = wp_unslash($post_data[$field]);
+    if (! wp_verify_nonce($nonce, $action)) {
+        return false;
+    }
+
+    return true;
 }
 
 /**

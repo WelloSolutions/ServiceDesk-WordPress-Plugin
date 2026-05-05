@@ -54,7 +54,7 @@ function wello_servicedesk_support_page_handle_save()
         return '';
     }
 
-    check_admin_referer('wello_save_support_page_content');
+    check_admin_referer('wello_save_support_page_content', 'wello_support_page_content_nonce');
 
     $content = isset($_POST['wello_support_page_content'])
         ? wp_kses_post(wp_unslash($_POST['wello_support_page_content']))

@@ -1,4 +1,5 @@
 <?php
+// phpcs:disable WordPress.Security.NonceVerification.Missing -- Nonce verification is handled properly in this file
 if (! defined('ABSPATH')) {
     exit;
 }
@@ -18,40 +19,64 @@ function wello_servicedesk_api_render_access_token_page()
         'access_token' => get_option('wello_access_token', '') ?: get_option('wello_servicedesk_token', ''),
     );
 
-    if (isset($_GET['token_cleared'])) {
+    $token_cleared = filter_input(INPUT_GET, 'token_cleared', FILTER_SANITIZE_STRING);
+    if ('1' === $token_cleared) {
         $state['success_msg'] = __('Access token has been cleared successfully.', 'wello-servicedesk-api');
     }
 
-    if (wello_servicedesk_is_post_request()) {
+    if (wello_servicedesk_is_post_request() && wello_servicedesk_access_token_post_has_valid_nonce($_POST)) {
         $state = wello_servicedesk_access_token_handle_post($state);
     }
 
     wello_servicedesk_access_token_render_page($state);
 }
 
+function wello_servicedesk_access_token_post_has_valid_nonce(array $post_data)
+{
+    return (
+        (isset($post_data['clear_access_token']) && wello_servicedesk_verify_post_nonce('clear_access_token_nonce_field', 'clear_access_token_nonce', $post_data))
+        || (isset($post_data['set_access_token']) && wello_servicedesk_verify_post_nonce('wello_set_access_token_nonce_field', 'wello_set_access_token_nonce', $post_data))
+        || (isset($post_data['request_otp']) && wello_servicedesk_verify_post_nonce('request_otp_nonce_field', 'request_otp_nonce', $post_data))
+        || (isset($post_data['confirm_otp']) && wello_servicedesk_verify_post_nonce('confirm_otp_nonce_field', 'confirm_otp_nonce', $post_data))
+    );
+}
+
 function wello_servicedesk_access_token_handle_post($state)
 {
-    if (isset($_POST['clear_access_token'])) {
-        return wello_servicedesk_access_token_clear();
+    if (isset($_POST['clear_access_token']) && wello_servicedesk_verify_post_nonce('clear_access_token_nonce_field', 'clear_access_token_nonce', $_POST)) {
+        return wello_servicedesk_access_token_clear($state);
     }
 
-    if (isset($_POST['request_otp'])) {
+    if (isset($_POST['set_access_token']) && wello_servicedesk_verify_post_nonce('wello_set_access_token_nonce_field', 'wello_set_access_token_nonce', $_POST)) {
+        return wello_servicedesk_access_token_set($state);
+    }
+
+    if (isset($_POST['request_otp']) && wello_servicedesk_verify_post_nonce('request_otp_nonce_field', 'request_otp_nonce', $_POST)) {
         return wello_servicedesk_access_token_handle_request_otp($state);
     }
 
-    if (isset($_POST['confirm_otp'])) {
+    if (isset($_POST['confirm_otp']) && wello_servicedesk_verify_post_nonce('confirm_otp_nonce_field', 'confirm_otp_nonce', $_POST)) {
         return wello_servicedesk_access_token_handle_confirm_otp($state);
     }
 
     return $state;
 }
 
+function wello_servicedesk_access_token_set($state)
+{
+    $state['access_token'] = sanitize_text_field(wello_servicedesk_post_text('access_token', '', $_POST));
+    update_option('wello_access_token', $state['access_token']);
+    update_option('wello_servicedesk_token', $state['access_token']);
+
+    $state['success_msg'] = __('Access token saved successfully.', 'wello-servicedesk-api');
+
+    return $state;
+}
+
 function wello_servicedesk_access_token_handle_request_otp($state)
 {
-    check_admin_referer('request_otp_nonce');
-
-    $username = wello_servicedesk_post_text('wello_username');
-    $password = wello_servicedesk_post_text('wello_password');
+    $username = wello_servicedesk_post_text('wello_username', '', $_POST);
+    $password = wello_servicedesk_post_text('wello_password', '', $_POST);
     $response = wello_servicedesk_access_token_request_otp($username, $password);
 
     if (is_wp_error($response)) {
@@ -135,10 +160,8 @@ function wello_servicedesk_access_token_request_otp($username, $password)
 
 function wello_servicedesk_access_token_handle_confirm_otp($state)
 {
-    check_admin_referer('confirm_otp_nonce');
-
-    $otp_token = wello_servicedesk_post_text('otp_token');
-    $otp_code = wello_servicedesk_post_text('wello_otp_code');
+    $otp_token = wello_servicedesk_post_text('otp_token', '', $_POST);
+    $otp_code = wello_servicedesk_post_text('wello_otp_code', '', $_POST);
     $response = wello_servicedesk_access_token_confirm_otp($otp_token, $otp_code);
 
     if (is_wp_error($response)) {
@@ -217,20 +240,16 @@ function wello_servicedesk_access_token_otp_error($body)
     return new WP_Error('otp_failed', __('OTP verification failed.', 'wello-servicedesk-api'));
 }
 
-function wello_servicedesk_access_token_clear()
+function wello_servicedesk_access_token_clear($state)
 {
-    if (! wello_servicedesk_verify_post_nonce('clear_access_token_nonce_field', 'clear_access_token_nonce')) {
-        return array(
-            'error_msg'    => __('Security check failed while clearing the token.', 'wello-servicedesk-api'),
-        );
-    }
-
-    check_admin_referer('clear_access_token_nonce');
     delete_option('wello_servicedesk_token');
+    delete_option('wello_access_token');
     delete_transient('wello_otp_token');
 
-    wp_safe_redirect(add_query_arg('token_cleared', '1'));
-    exit;
+    $state['access_token'] = '';
+    $state['success_msg'] = __('Access token has been cleared successfully.', 'wello-servicedesk-api');
+
+    return $state;
 }
 
 function wello_servicedesk_access_token_render_page($state)
@@ -264,11 +283,11 @@ function wello_servicedesk_access_token_render_set_form($access_token)
 {
     ?>
     <div style="margin-top: 20px;">
-        <form action="<?php echo esc_url(admin_url('admin.php?page=wello-servicedesk-settings')); ?>" method="post">
+        <form method="post">
             <?php wp_nonce_field('wello_set_access_token_nonce', 'wello_set_access_token_nonce_field'); ?>
             <label for="access_token_display"><strong><?php echo esc_html__('Access Token:', 'wello-servicedesk-api'); ?></strong></label><br>
             <input type="text" id="access_token_display" name="access_token" value="<?php echo esc_attr($access_token); ?>" readonly style="width: 50%; margin-top: 10px;">
-            <button type="submit" class="button" style="margin-top: 10px;"><?php echo esc_html__('Set Access Token', 'wello-servicedesk-api'); ?></button>
+            <button type="submit" name="set_access_token" class="button" style="margin-top: 10px;"><?php echo esc_html__('Set Access Token', 'wello-servicedesk-api'); ?></button>
         </form>
     </div>
     <?php
