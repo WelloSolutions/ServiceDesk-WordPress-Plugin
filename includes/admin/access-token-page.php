@@ -222,7 +222,11 @@ function wello_servicedesk_access_token_clear()
     if (! wello_servicedesk_verify_post_nonce('clear_access_token_nonce_field', 'clear_access_token_nonce')) {
         return array(
             'error_msg'    => __('Security check failed while clearing the token.', 'wello-servicedesk-api'),
-    check_admin_referer('clear_access_token_nonce');elete_option('wello_servicedesk_token');
+        );
+    }
+
+    check_admin_referer('clear_access_token_nonce');
+    delete_option('wello_servicedesk_token');
     delete_transient('wello_otp_token');
 
     wp_safe_redirect(add_query_arg('token_cleared', '1'));
