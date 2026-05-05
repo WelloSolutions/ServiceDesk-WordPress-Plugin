@@ -100,7 +100,7 @@ The minified JavaScript and CSS files in this plugin are generated from source c
 - Run `npm start` to start the development server at http://localhost:3000
 - Useful for testing and development before building
 
-Source code repository: https://github.com/WelloSolutions/WP-ServiceDesk-Plugin
+Source code repository: https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin
 
 == Screenshots ==
 
@@ -130,7 +130,7 @@ Initial stable release.
 == Support ==
 
 Report bugs or request features:
-https://github.com/WelloSolutions/WP-ServiceDesk-Plugin/issues
+https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin/issues
 
 == Additional Notes ==
 
