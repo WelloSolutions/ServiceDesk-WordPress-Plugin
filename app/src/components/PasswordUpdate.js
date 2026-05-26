@@ -1,11 +1,11 @@
 // src/pages/PasswordUpdate.js
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { fetchDocuments } from '../services/apiServiceDocuments';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Loader } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
-import { requestPasswordChange, verifyPasswordChange } from '../services/welloAuthService';
 
 function maskEmail(email) {
   if (!email.includes('@')) return email;
@@ -26,14 +26,15 @@ function maskEmail(email) {
 
 const PasswordUpdate = () => {
   const navigate = useNavigate();
-  const { auth, logout, updateAuthToken } = useAuth(); // Access the user's current auth info
+  const { auth, login, logout, updateAuthToken } = useAuth(); // Access the user's current auth info
   setPrimaryTheme(auth?.colorPrimary);
+  const [token, setToken] = useState('')
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [showOTPModal, setShowOTPModal] = useState(false);
+  const [currentToken, setCurrentToken] = useState('');
   const [otpToken, setOtpToken] = useState('');
-  const [passwordChangeAuthToken, setPasswordChangeAuthToken] = useState('');
   const [otpDigits, setOtpDigits] = useState(["", "", "", "", "", ""]);
   const inputRefs = useRef([]);
 
@@ -42,6 +43,12 @@ const PasswordUpdate = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useTranslation('updatePassword');
 
+  useEffect(() => {
+    if (window.welloServiceDesk) {
+      const { token } = window.welloServiceDesk;
+      setToken(token)
+    }
+  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -77,25 +84,35 @@ const PasswordUpdate = () => {
 
     try {
       setIsLoading(true);
-      const { response, authToken } = await requestPasswordChange(auth.authEmail, currentPassword);
+      // Step 1: Login using provided credentials
+      const userData = await login(token, auth.authEmail, currentPassword);
 
-      if (!response?.data || !response.data.otp_token) {
+      if (!userData || !userData.data || !userData.data.auth_token) {
+        setCurrentPassword('');
+        setNewPassword('');
+        setConfirmNewPassword('');
+        throw new Error(t('update_password_page_err_invalid_credentials'));
+      }
+
+      setCurrentToken(userData.data.auth_token);
+      // Step 2: Request password change using received auth token
+      const response = await fetchDocuments('api/ContactPlug/request-changepw', 'PUT', userData.data.auth_token);
+
+      if (!response || !response.otp_token) {
         setCurrentPassword('');
         setNewPassword('');
         setConfirmNewPassword('');
         throw new Error(t('update_password_page_err_OTP_not_received'));
       }
 
-      setOtpToken(response.data.otp_token);
-      setPasswordChangeAuthToken(authToken);
+      // Step 3: OTP token received, continue flow
+      setOtpToken(response.otp_token);
       setShowOTPModal(true);
-      setError(null);
       setIsLoading(false);
     } catch (err) {
       console.error('Password update flow error:', err);
       setError(err.message || t('update_password_page_err_failed'));
       setSuccessMessage(null);
-      setIsLoading(false);
     }
 
   };
@@ -112,20 +129,21 @@ const PasswordUpdate = () => {
   };
 
   const handleOTPSubmit = async () => {
-    if (!passwordChangeAuthToken) {
-      setError(t('update_password_page_err_failed'));
-      return;
+
+    const payload = {
+      'otp_token': otpToken,
+      'otp_code': otpDigits.join(""),
+      'new_password': newPassword
     }
 
-    try {
-      const response = await verifyPasswordChange(passwordChangeAuthToken, {
-        otp_token: otpToken,
-        otp_code: otpDigits.join(""),
-        new_password: newPassword,
-      });
+    //console.log(payload);
 
-      if (response?.data?.auth_token) {
-        updateAuthToken(response.data.auth_token);
+    try {
+      const response = await fetchDocuments('api/ContactPlug/verify-changepw', 'PUT', currentToken, payload);
+
+      console.log(response);
+      if (response.auth_token) {
+        updateAuthToken(response.auth_token);
       }
 
       setSuccessMessage(t('update_password_page_err_successfully'));
@@ -133,7 +151,6 @@ const PasswordUpdate = () => {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
-      setPasswordChangeAuthToken('');
       setTimeout(() => {
         logout();
         navigate('/login');
@@ -142,7 +159,6 @@ const PasswordUpdate = () => {
       setError(t('update_password_page_err_failed'));
       setSuccessMessage(null);
     }
-
     setShowOTPModal(false);
   };
 

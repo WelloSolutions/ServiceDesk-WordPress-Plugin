@@ -104,32 +104,23 @@ Included languages:
 
 Translation files are located in the `/languages/` directory.
 
-== Source Code and Build Process ==
+== Source Code ==
 
-Frontend assets are built using React.
+This plugin includes minified production assets generated using a build process.
 
-Source files:
-`app/src/`
-
-Build process:
-
-1. Navigate to `app/`
-2. Run `npm install`
-3. Run `npm run build`
-
-Production assets:
-`app/build/static/`
-
-Includes:
-* Minified JavaScript
-* Minified CSS
-* Code-split chunks
-
-Development:
-Run `npm start` for local development server.
-
-Repository:
+The full, human-readable source code is publicly available here:
 https://github.com/WelloSolutions/ServiceDesk-WordPress-Plugin
+
+To build the assets:
+
+1. Navigate to /app/
+2. Run: npm install
+3. Run: npm run build
+
+This will generate the files located in:
+app/build/static/
+
+These generated files are included in the plugin for production use.
 
 == Screenshots ==
 

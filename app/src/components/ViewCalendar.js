@@ -9,6 +9,7 @@ import { BadgeInfo, FileText, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLe
 import { useTranslation } from "react-i18next";
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
 const animatedComponents = makeAnimated();
@@ -104,10 +105,11 @@ const ViewCalendars = () => {
                 const name = p.name ? `${p.name} -` : '';
                 const street = p.db_address_street || '';
                 const streetNumber = p.db_address_street_number || '';
+                const street2 = p.db_address_street2 || '';
                 const zip = p.db_address_zip || '';
                 const city = p.db_address_city || '';
 
-                const label = [name, street, streetNumber, city, zip]
+                const label = [name, street, streetNumber, street2, city, zip]
                   .filter(Boolean)
                   .join(' ');
 
@@ -396,14 +398,14 @@ const ViewCalendars = () => {
   } = tableInstance;
 
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
+  // if (loading) {
+  //   return <div className="flex w-full items-center justify-center h-screen">
+  //     <div className="relative">
+  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
+  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
+  //     </div>
+  //   </div>;
+  // }
 
   if (error) {
     return <div className="text-center mt-10 text-red-600">Error fetching data: {error.message}</div>;
@@ -801,6 +803,9 @@ const ViewCalendars = () => {
                 <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
                 <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
               </div>
+            )}
+            {loading && (
+              <TableLoadingSkeleton rows={5} columns={6} />
             )}
           </>
         ) : (

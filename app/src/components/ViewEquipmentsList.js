@@ -4,11 +4,12 @@ import { fetchDocuments } from '../services/apiServiceDocuments.js';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext.js';
 import {
-  CornerDownRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ArrowLeft, BadgeInfo, Circle, Filter,
-  MapPin, Text, Bold, BarChart, Hash, X
+  CornerDownRight, ChevronDown, ChevronUp, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, BadgeInfo, Circle, Filter,
+  MapPin, Text, Bold, BarChart, Hash, X, ChevronsLeft, ChevronsRight, ArrowRightToLine, ArrowLeftToLine
 } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
@@ -21,6 +22,8 @@ const ViewInstallations = () => {
   const [contacts, setContacts] = useState([]);
   const [subRowsMap, setSubRowsMap] = useState({});
   const [loading, setLoading] = useState(true);
+  const [startRow, setStartRow] = useState(0);
+  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(false);
   const [renderedSubRows, setRenderedSubRows] = useState({});
   const [error, setError] = useState(null);
@@ -79,12 +82,12 @@ const ViewInstallations = () => {
   }), []);
 
   const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null }) => {
+    async ({ parentOnly, groupKeys = [], parentId = null }, startRow = 0, endRow = 500) => {
       const url = `api/ProjectView/Search?keyword=${filters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${filters.model}&equipmentBrandID=${filters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${filters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
 
       const payload = {
-        startRow: 0,
-        endRow: 500,
+        startRow: startRow,
+        endRow: endRow,
         rowGroupCols: [],
         valueCols: [],
         pivotCols: [],
@@ -119,8 +122,8 @@ const ViewInstallations = () => {
   );
 
   useEffect(() => {
-    fetchProjects({ parentOnly: true });
-  }, [fetchProjects]);
+    fetchProjects({ parentOnly: true }, startRow, endRow);
+  }, [fetchProjects, startRow, endRow]);
 
   useEffect(() => {
     const loadLocations = async () => {
@@ -360,7 +363,6 @@ const ViewInstallations = () => {
       accessor: 'name',
       Cell: ({ row }) => (
         <span
-          onClick={() => navigate(`/equipment/${row.original.id}`)}
           className="me-2 text-left"
         >
           {row.original.name}
@@ -406,7 +408,7 @@ const ViewInstallations = () => {
         </span>
       ),
     },
-  ], [statusColors, statusDotColors, navigate, expanded, toggleExpand, t]);
+  ], [statusColors, statusDotColors, expanded, toggleExpand, t]);
 
   // Filtered data based on search criteria
   const filteredContacts = useMemo(() => {
@@ -528,11 +530,20 @@ const ViewInstallations = () => {
   const {
     getTableProps,
     headerGroups,
-    rows,
+    rows,// Instead of using 'rows', we'll use page, which has only the rows for the active page
+    canPreviousPage,
+    canNextPage,
+    pageOptions,
+    gotoPage,
+    nextPage,
+    previousPage,
+    setPageSize,
+    state: { pageIndex, pageSize },
   } = useTable(
     {
       columns,
-      data: displayedData
+      data: displayedData,
+      initialState: { pageIndex: 0, pageSize: 12 },
     },
     useSortBy,
     useExpanded
@@ -630,14 +641,14 @@ const ViewInstallations = () => {
     ));
   };
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
+  // if (loading) {
+  //   return <div className="flex w-full items-center justify-center h-screen">
+  //     <div className="relative">
+  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
+  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
+  //     </div>
+  //   </div>;
+  // }
 
   if (error) {
     return <div className="text-center mt-10 text-red-600">Error fetching data: {error.message}</div>;
@@ -915,9 +926,49 @@ const ViewInstallations = () => {
           </table>
         </div>
         {isLoading && (
-          <div className="ml-2 space-y-2 p-2">
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
+          <TableLoadingSkeleton rows={3} columns={6} />
+        )}
+        {loading && (
+          <TableLoadingSkeleton rows={5} columns={6} />
+        )}
+
+        {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
+        {!isLoading && filteredContacts.length > 12 && (
+          <div className="flex items-center justify-between p-4">
+            <span className="text-base text-slate-700">
+              {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageOptions.length}
+            </span>
+            <div>
+
+              <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                <ChevronsLeft className="w-4" />
+              </button>
+
+              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowLeftToLine className="w-4" />
+              </button>
+              <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowLeft className="w-4" />
+              </button>
+              <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowRight className="w-4" />
+              </button>
+              <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowRightToLine className="w-4" />
+              </button>
+
+              <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={filteredContacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                <ChevronsRight className="w-4" />
+              </button>
+
+            </div>
+            <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
+              {[12, 24, 36, 48].map(size => (
+                <option key={size} value={size}>
+                  {t("ticket_list_table_pagination_show")} {size}
+                </option>
+              ))}
+            </select>
           </div>
         )}
       </div>

@@ -6,12 +6,13 @@ import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   File, Eye, Download, BadgeInfo, ArrowUp, ArrowDown, ArrowLeft, ArrowLeftToLine, ArrowRight, ArrowRightToLine,
-  LayoutGrid, Table, Type, MapPin, Milestone, Building, Calendar, FileText, Wrench, Image, Loader
+  LayoutGrid, Table, Type, MapPin, Milestone, Building, Calendar, FileText, Wrench, Image, Loader, ChevronsLeft, ChevronsRight
 } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { useAuth } from '../AuthContext.js';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
@@ -24,7 +25,9 @@ const ViewDocuments = () => {
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
   const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
+  // const [loading, setLoading] = useState(true);
+  const [startRow, setStartRow] = useState(0);
+  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(false);
   const [thumbnailLoading, setThumbnailLoading] = useState({});
   const [isURLLoading, setIsURLLoading] = useState(false);
@@ -131,10 +134,6 @@ const ViewDocuments = () => {
   const [object, setObject] = useState(uniqueObjects);
   const [selectedFiles, setSelectedFiles] = useState([]);
 
-  useEffect(() => {
-    setLoading(true)
-  }, []);
-
 
   useEffect(() => {
     if (downloadMsg) {
@@ -148,7 +147,7 @@ const ViewDocuments = () => {
 
       const payload = {
         startRow: 0,
-        endRow: 500,
+        endRow: 1500,
         rowGroupCols: [],
         valueCols: [],
         pivotCols: [],
@@ -168,8 +167,6 @@ const ViewDocuments = () => {
       } catch (err) {
         console.error(err);
         setError(err);
-      } finally {
-        setLoading(false);
       }
     },
     [auth]
@@ -187,10 +184,11 @@ const ViewDocuments = () => {
                 const name = p.name ? `${p.name} -` : '';
                 const street = p.db_address_street || '';
                 const streetNumber = p.db_address_street_number || '';
+                const street2 = p.db_address_street2 || '';
                 const zip = p.db_address_zip || '';
                 const city = p.db_address_city || '';
 
-                const label = [name, street, streetNumber, zip, city]
+                const label = [name, street, streetNumber, street2, city, zip]
                   .filter(Boolean)
                   .join(' ');
 
@@ -233,7 +231,7 @@ const ViewDocuments = () => {
   };
 
 
-  const fetchDocumentsData = async (filters) => {
+  const fetchDocumentsData = async (filters, startRow, endRow) => {
     try {
       const payload = {
         keyword: keyword,
@@ -255,8 +253,8 @@ const ViewDocuments = () => {
         date_add_min: `${date.length ? date.map((d) => d.value) : date.value}-01-01T00:00:00.000`,
         date_add_max: `${date.length ? date.map((d) => d.value) : date.value}-12-31T23:59:59.000`,
         query_object: {
-          startRow: 0,
-          endRow: 500,
+          startRow: startRow,
+          endRow: endRow,
           rowGroupCols: [
             {
               id: "object_type",
@@ -332,7 +330,7 @@ const ViewDocuments = () => {
     };
 
     setIsLoading(true);
-    fetchDocumentsData(filtersObj);
+    fetchDocumentsData(filtersObj, startRow, endRow);
   };
 
   const openDocumentInNewTab = useCallback(async (id) => {
@@ -531,8 +529,8 @@ const ViewDocuments = () => {
       date_add_min: `${date.length ? date.map((d) => d.value) : date.value}-01-01T00:00:00.000`,
       date_add_max: `${date.length ? date.map((d) => d.value) : date.value}-12-31T23:59:59.000`,
       query_object: {
-        startRow: 0,
-        endRow: 500,
+        startRow: startRow || 0,
+        endRow: endRow || 500,
         rowGroupCols: [
           {
             id: "object_type",
@@ -633,14 +631,14 @@ const ViewDocuments = () => {
     usePagination
   );
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
+  // if (loading) {
+  //   return <div className="flex w-full items-center justify-center h-screen">
+  //     <div className="relative">
+  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
+  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
+  //     </div>
+  //   </div>;
+  // }
 
   if (error) {
     return <div className="text-center mt-10 text-red-600">Error fetching data: {error.message}</div>;
@@ -993,10 +991,7 @@ const ViewDocuments = () => {
               </table>
             </div>
             {isLoading && (
-              <div className="ml-2 space-y-2 p-2">
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
-              </div>
+              <TableLoadingSkeleton rows={5} columns={6} />
             )}
             {/* Pagination Controls */}
             {!isLoading && contacts.length > 12 && (
@@ -1005,6 +1000,9 @@ const ViewDocuments = () => {
                   {t("documents_table_pagination_page")} {pageIndex + 1} {t("documents_table_pagination_of")} {pageOptions.length}
                 </span>
                 <div>
+                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsLeft className="w-4" />
+                  </button>
                   <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary  disabled:opacity-50">
                     <ArrowLeftToLine className="w-4" />
                   </button>
@@ -1016,6 +1014,9 @@ const ViewDocuments = () => {
                   </button>
                   <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                     <ArrowRightToLine className="w-4" />
+                  </button>
+                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={contacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsRight className="w-4" />
                   </button>
                 </div>
                 <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-primary border border-primary rounded-md max-w-32">
@@ -1125,6 +1126,9 @@ const ViewDocuments = () => {
                   {t("documents_table_pagination_page")} {gridPageIndex + 1} {t("documents_table_pagination_of")} {gridPageOptions.length}
                 </span>
                 <div>
+                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsLeft className="w-4" />
+                  </button>
                   <button onClick={() => gotoGridPage(0)} disabled={!canGridPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                     <ArrowLeftToLine className="w-4" />
                   </button>
@@ -1136,6 +1140,9 @@ const ViewDocuments = () => {
                   </button>
                   <button onClick={() => gotoGridPage(gridPageOptions.length - 1)} disabled={!canGridNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                     <ArrowRightToLine className="w-4" />
+                  </button>
+                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={contacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsRight className="w-4" />
                   </button>
                 </div>
                 <select value={gridPageSize} onChange={e => setGridPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-primary border border-primary rounded-md max-w-32">

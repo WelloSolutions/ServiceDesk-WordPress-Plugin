@@ -9,6 +9,7 @@ import { useAuth } from '../AuthContext';
 import { ExternalLink, LayoutGrid, List, CalendarClock, File, FileText, Loader, Eye, ArrowLeft, ArrowUpRight, ArrowDownLeft, Circle, MapPin, Phone, Image, Wrench, ArrowDown, ArrowUp, ArrowLeftToLine, ArrowRightToLine, ArrowRight, BadgeInfo, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import axios from 'axios';
 
 const SingleInstallation = () => {
   const navigate = useNavigate();
@@ -481,21 +482,19 @@ const SingleInstallation = () => {
         setBomError(null);
       }
       try {
-        // const baseUrl =
-        //   process.env.REACT_APP_API_URL ||
-        //   'https://testservicedeskapi.odysseemobile.com/';
-        // const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+        const baseUrl =
+          process.env.REACT_APP_API_URL ||
+          'https://testservicedeskapi.odysseemobile.com/';
+        const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 
-        // const response = await axios({
-        //   url: `${normalizedBase}api/ProjectBillOfMaterial/GetByProject?$filter=project_id eq ${installation.id}`,
-        //   method: 'GET',
-        //   headers: {
-        //     'Authorization': `Basic ${auth.authKey}`,
-        //     'Accept': 'application/json',
-        //   },
-        // });
-
-        const response = await fetchDocuments(`api/ProjectBillOfMaterial/GetByProject?$filter=project_id eq ${installation.id}`, 'GET');
+        const response = await axios({
+          url: `${normalizedBase}api/ProjectBillOfMaterial/GetByProject?$filter=project_id eq ${installation.id}`,
+          method: 'GET',
+          headers: {
+            'Authorization': `Basic ${auth.authKey}`,
+            'Accept': 'application/json',
+          },
+        });
 
         const payload = response?.data ?? response;
         let normalizedRows = [];
@@ -949,7 +948,7 @@ const SingleInstallation = () => {
       </div>
 
       <div className='shadow-md rounded-lg'>
-        <h2 className="px-2 pt-2 md:px-8 md:pt-8 capitalize text-zinc-900 text-2xl font-semibold mb-4">{t("single_equipment_page_reference")}: { installation?.reference_back_office || installation?.id2 } | {installation?.name}</h2>
+        <h2 className="px-2 pt-2 md:px-8 md:pt-8 capitalize text-zinc-900 text-2xl font-semibold mb-4">{t("single_equipment_page_reference")}: {installation?.reference_back_office || installation?.id2} | {installation?.name}</h2>
 
         {/* Tab Navigation */}
         <div className="flex flex-col md:flex-row md:space-x-4 mb-8 px-2 md:px-8">
@@ -1393,9 +1392,6 @@ const SingleInstallation = () => {
                     })}
                 </tbody>
               </table>
-              {loading &&
-                <TableLoadingSkeleton rows={8} columns={6} />
-              }
             </div>
             {/* Pagination Controls - Only show if filteredWorkOrder exceed pageSize (10) */}
             {wordOrder.length > 12 && (
@@ -1426,6 +1422,9 @@ const SingleInstallation = () => {
                 </select>
               </div>
             )}
+            {loading &&
+              <TableLoadingSkeleton rows={5} columns={5} />
+            }
           </>
         ) : activeTab === 'contractEntitlements' ? (
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4 px-2 md:px-12 pb-12'>
@@ -1875,7 +1874,7 @@ const SingleInstallation = () => {
             )}
 
             {bomLoading && (
-              <TableLoadingSkeleton rows={5} columns={3} />
+              <TableLoadingSkeleton rows={5} columns={5} />
             )}
 
             {/* GRID VIEW */}

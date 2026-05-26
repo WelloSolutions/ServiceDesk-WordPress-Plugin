@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
 
 const Home = () => {
-  const [banner_img, setBanner_img] = useState('service-desk/banner_img.png');
+  const [banner_img, setBanner_img] = useState('/service-desk/banner_img.png');
   const { t } = useTranslation('home');
 
   useEffect(() => {

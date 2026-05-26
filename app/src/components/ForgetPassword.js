@@ -9,7 +9,7 @@ const ForgotPassword = () => {
   const [domain, setDomain] = useState(''); // New state for domain
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
-  const [logo, setLogo] = useState('/service-desk/logo.png');
+  const [logo, setLogo] = useState('https://fsm.wello.net/wp-content/uploads/2024/01/WELLO_LOGO_Purple.png');
 
   useEffect(() => {
     if (window.welloServiceDesk) {

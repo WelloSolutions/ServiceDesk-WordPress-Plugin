@@ -7,11 +7,13 @@ import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
   XCircle, X, CornerDownRight, CircleCheckBig, Filter, FileText, Clock, File, Circle, Wrench, ArrowUp, ArrowDown,
-  MapPin, Text, Bold, BarChart, Hash, UploadCloud, ChevronDown, ChevronUp, Check, BadgeInfo, TicketX, Thermometer
+  MapPin, Text, Bold, BarChart, Hash, UploadCloud, ChevronDown, ChevronUp, Check, BadgeInfo, TicketX, Thermometer,
+  ArrowRightToLine, ArrowLeftToLine, ChevronsLeft, ChevronsRight, ArrowLeft, ArrowRight
 } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
@@ -23,6 +25,8 @@ const CreateTicket = () => {
   setPrimaryTheme(auth?.colorPrimary);
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [startRow, setStartRow] = useState(0);
+  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
   const [subRowsMap, setSubRowsMap] = useState({});
@@ -103,12 +107,12 @@ const CreateTicket = () => {
   ];
 
   const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null }) => {
-      const url = `api/ProjectView/Search?keyword=${filters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${filters.model}&equipmentBrandID=${filters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${filters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
+    async ({ parentOnly, groupKeys = [], parentId = null, currentFilters = filters }, startRow, endRow) => {
+      const url = `api/ProjectView/Search?keyword=${currentFilters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${currentFilters.model}&equipmentBrandID=${currentFilters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${currentFilters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
 
       const payload = {
-        startRow: 0,
-        endRow: 500,
+        startRow: startRow,
+        endRow: endRow,
         rowGroupCols: [],
         valueCols: [],
         pivotCols: [],
@@ -143,10 +147,12 @@ const CreateTicket = () => {
   );
 
   useEffect(() => {
-    const loadLocations = async () => {
+    const loadInitialData = async () => {
       try {
-        const projects = await fetchProjects({ parentOnly: true });
+        // Only load projects once on mount
+        const projects = await fetchProjects({ parentOnly: true, currentFilters: filters }, startRow, endRow);
 
+        // Extract locations from projects
         const locations = Array.isArray(projects)
           ? [
             ...new Map(
@@ -154,10 +160,11 @@ const CreateTicket = () => {
                 const name = p.name ? `${p.name} -` : '';
                 const street = p.db_address_street || '';
                 const streetNumber = p.db_address_street_number || '';
+                const street2 = p.db_address_street2 || '';
                 const zip = p.db_address_zip || '';
                 const city = p.db_address_city || '';
 
-                const label = [name, street, streetNumber, city, zip]
+                const label = [name, street, streetNumber, street2, city, zip]
                   .filter(Boolean)
                   .join(' ');
 
@@ -167,14 +174,14 @@ const CreateTicket = () => {
           ]
           : [];
 
-        setAllLocations(locations); // locations: Array<{ id, label }>
+        setAllLocations(locations);
       } catch (err) {
         console.error('Failed to fetch locations', err);
       }
     };
 
-    loadLocations();
-  }, [fetchProjects]);
+    loadInitialData();
+  }, [fetchProjects, filters, startRow, endRow]);
 
   const handleLocationChange = (e) => {
     const value = e.target.value;
@@ -198,6 +205,7 @@ const CreateTicket = () => {
     }));
     setLocationHints([]);
   };
+
 
   useEffect(() => {
     const fetchBrands = async () => {
@@ -230,10 +238,16 @@ const CreateTicket = () => {
       }
     };
 
-    if (!brandsLoaded) fetchBrands();
-    if (!statusesLoaded) fetchStatuses();
-    if (!modelsLoaded) fetchModels();
-  }, [auth, brandsLoaded, statusesLoaded, modelsLoaded]);
+    if (isModalOpen && !brandsLoaded) {
+      fetchBrands();
+    }
+    if (isModalOpen && !modelsLoaded) {
+      fetchModels();
+    }
+    if (isModalOpen && !statusesLoaded) {
+      fetchStatuses();
+    }
+  }, [auth, isModalOpen, brandsLoaded, modelsLoaded, statusesLoaded]);
 
   const brandOptions = Array.isArray(fetchBrands)
     ? fetchBrands
@@ -364,16 +378,16 @@ const CreateTicket = () => {
     });
   };
 
-  useEffect(() => {
-    fetchProjects({ parentOnly: true });
-  }, [fetchProjects]);
+  // useEffect(() => {
+  //   fetchProjects({ parentOnly: true }, startRow, endRow);
+  // }, [fetchProjects, startRow, endRow]);
 
   const handleFetchChildren = useCallback(
     async (parentId) => {
       if (subRowsMap[parentId]) return;
-      fetchProjects({ parentOnly: false, groupKeys: [parentId], parentId });
+      fetchProjects({ parentOnly: false, groupKeys: [parentId], parentId }, startRow, endRow);
     },
-    [fetchProjects, subRowsMap]
+    [fetchProjects, subRowsMap, startRow, endRow]
   );
 
 
@@ -384,19 +398,6 @@ const CreateTicket = () => {
     setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
   }, [expanded, handleFetchChildren]);
 
-  // const flattenData = (contacts, subRowsMap) => {
-  //   const flat = [];
-  //   const addRows = rows => {
-  //     rows.forEach(row => {
-  //       flat.push(row);
-  //       if (subRowsMap[row.id] && subRowsMap[row.id].length > 0) {
-  //         addRows(subRowsMap[row.id]);
-  //       }
-  //     });
-  //   };
-  //   addRows(contacts);
-  //   return flat;
-  // };
 
   const clearedFilters = {
     location: "",
@@ -407,39 +408,7 @@ const CreateTicket = () => {
     includeArchived: false,
   };
 
-  // Apply filters when Confirm is clicked
-  // const applyFilters = async () => {
-  //   const { brand, status, model, location, keyword } = tempFilters;
 
-  //   const isValid =
-  //     brand !== clearedFilters.brand ||
-  //     status !== clearedFilters.status ||
-  //     model !== clearedFilters.model ||
-  //     location.trim() !== "" ||
-  //     keyword.trim() !== "";
-
-  //   if (!isValid) return;
-
-  //   setIsLoading(true);
-
-  //   try {
-  //     flattenData(contacts, subRowsMap); // Ensure it's awaited if async
-  //     setFilters(tempFilters); // Sync UI state
-
-  //     await fetchProjects({
-  //       parentOnly: false,
-  //       brand,
-  //       status,
-  //       model,
-  //     });
-  //   } catch (error) {
-  //     console.error("Failed to apply filters:", error);
-  //     // Optionally show a toast
-  //   } finally {
-  //     setIsModalOpen(false);
-  //     setIsLoading(false);
-  //   }
-  // };
   const applyFilters = async () => {
     const { brand, status, model, location, keyword } = tempFilters;
     const isValid =
@@ -455,34 +424,11 @@ const CreateTicket = () => {
     try {
       setFilters(tempFilters);
 
-      // 1️⃣ Fetch parent-only rows for tree structure
-      const parentData = await fetchProjects({ parentOnly: true });
-
-      // 2️⃣ Fetch filtered rows with parentOnly: false to include children
-      const filteredData = await fetchProjects({ parentOnly: false, filters: tempFilters });
-
-      // 3️⃣ Merge parent + filtered children
-      // Keep parents as the base, and for any filtered child, ensure they appear under correct parent
-      const mergedSubRowsMap = { ...subRowsMap };
-      filteredData.forEach(row => {
-        if (row.parentId) {
-          if (!mergedSubRowsMap[row.parentId]) mergedSubRowsMap[row.parentId] = [];
-          // Avoid duplicates
-          if (!mergedSubRowsMap[row.parentId].some(r => r.id === row.id)) {
-            mergedSubRowsMap[row.parentId].push(row);
-          }
-        } else {
-          // If a parent matches filters, make sure it's in parentData
-          if (!parentData.some(r => r.id === row.id)) {
-            parentData.push(row);
-          }
-        }
-      });
-
-      setContacts(parentData);
-      setSubRowsMap(mergedSubRowsMap);
+      // Single API call with all filters applied
+      await fetchProjects({ parentOnly: true, currentFilters: tempFilters });
     } catch (err) {
       console.error('Failed to apply filters:', err);
+      toast.error('Error applying filters');
     } finally {
       setIsModalOpen(false);
       setIsLoading(false);
@@ -497,7 +443,8 @@ const CreateTicket = () => {
       setTempFilters(clearedFilters);
       setFilters(clearedFilters);
 
-      await fetchProjects({ parentOnly: true }); // Reload default view
+      // Single API call with cleared filters
+      await fetchProjects({ parentOnly: true, currentFilters: clearedFilters });
     } catch (error) {
       console.error("Reset failed:", error);
     } finally {
@@ -506,32 +453,10 @@ const CreateTicket = () => {
     }
   };
 
-
-  // Set the first ticketType when ticketTypes array changes
-  // useEffect(() => {
-  //   if (ticketTypes.length > 0 && !ticketDetails.ticketType) {
-  //     setTicketDetails((prev) => ({
-  //       ...prev,
-  //       ticketType: ticketTypes[0].name,
-  //     }));
-  //   }
-  // }, [ticketTypes, ticketDetails]);
-
   const ticketTypeOptions = useMemo(() => ticketTypes.map((type) => ({
     value: type.name,
     label: type.name,
   })), [ticketTypes]);
-
-
-  // Set the first severity when severities array changes
-  // useEffect(() => {
-  //   if (severities.length > 0 && !ticketDetails.severity) {
-  //     setTicketDetails((prev) => ({
-  //       ...prev,
-  //       severity: severities[0].name,
-  //     }));
-  //   }
-  // }, [severities, ticketDetails]);
 
   const severityOptions = useMemo(() => severities.map((severity) => ({
     value: severity.name,
@@ -550,48 +475,46 @@ const CreateTicket = () => {
   };
 
 
+  // Batch API calls for ticket types, priorities, and user ID
   useEffect(() => {
-    if (typesLoaded && severitiesLoaded && userLoaded) return;
+    const loadTicketMetadata = async () => {
+      if (typesLoaded && severitiesLoaded && userLoaded) return;
 
-    const taskType = async () => {
       try {
-        if (!typesLoaded) {
-          const data = await fetchDocuments('api/TaskType?$orderby=is_default,sequence', 'GET', auth.authKey);
-          setTicketTypes(data.value);
+        const promises = [];
+
+        // Only fetch if not already loaded
+        if (!typesLoaded && step === 1) promises.push(fetchDocuments('api/TaskType?$orderby=is_default,sequence', 'GET', auth.authKey));
+        else promises.push(Promise.resolve(null));
+
+        if (!severitiesLoaded && step === 1) promises.push(fetchDocuments('api/TaskPriority?$orderby=is_default,sequence', 'GET', auth.authKey));
+        else promises.push(Promise.resolve(null));
+
+        if (!userLoaded && step === 1) promises.push(fetchDocuments(`api/Contact?$filter=e_login+eq+'${encodeURIComponent(auth.authEmail)}'`, 'GET', auth.authKey));
+        else promises.push(Promise.resolve(null));
+
+        const [typeRes, severityRes, userRes] = await Promise.all(promises);
+
+        if (typeRes) {
+          setTicketTypes(typeRes.value);
           setTypesLoaded(true);
         }
-      } catch (err) {
-        setError(err);
-      }
-    }
-
-    const taskSeverity = async () => {
-      try {
-        if (!severitiesLoaded) {
-          const data = await fetchDocuments('api/TaskPriority?$orderby=is_default,sequence', 'GET', auth.authKey);
-          setSeverities(data.value);
+        if (severityRes) {
+          setSeverities(severityRes.value);
           setSeveritiesLoaded(true);
         }
-      } catch (err) {
-        setError(err);
-      }
-    }
-
-    const fetchUserID = async () => {
-      try {
-        if (!userLoaded) {
-          const responseUser = await fetchDocuments(`api/Contact?$filter=e_login+eq+'${encodeURIComponent(auth.authEmail)}'`, 'GET', auth.authKey);
-          setUserID(responseUser.value[0]);
+        if (userRes) {
+          setUserID(userRes.value[0]);
           setUserLoaded(true);
         }
       } catch (err) {
+        console.error('Error loading ticket metadata:', err);
         setError(err);
       }
-    }
-    taskType();
-    taskSeverity();
-    fetchUserID();
-  }, [auth, typesLoaded, severitiesLoaded, userLoaded]);
+    };
+
+    loadTicketMetadata();
+  }, [auth, typesLoaded, severitiesLoaded, userLoaded, step]);
 
   const handleNameChange = (e) => {
     setTicketName(e.target.value);
@@ -623,10 +546,13 @@ const CreateTicket = () => {
       )
     },
     {
-      Header: t('create_ticket_table_heading_address_text'),
-      accessor: 'db_address_street',
-      Cell: ({ row }) =>
-        row.original.db_address_street + ' - ' + row.original.db_address_street_number
+      Header: t('create_ticket_table_heading_address_text'), accessor: 'db_address_street',
+      Cell: ({ row }) => {
+        const isMobile = row.original.db_address_id === '00000000-0000-0000-0000-000000000000';
+        return isMobile
+          ? t('No address, it is mobile')
+          : `${row.original.db_address_street} - ${row.original.db_address_street_number} ${row.original.db_address_street2 || ''}`;
+      }
     },
     { Header: t('create_ticket_table_heading_type_text'), accessor: 'equipment_family_name' },
     { Header: t('create_ticket_table_heading_reference_text'), accessor: 'customer_reference' },
@@ -768,11 +694,20 @@ const CreateTicket = () => {
   const {
     getTableProps,
     headerGroups,
-    rows,
+    rows,// Instead of using 'rows', we'll use page, which has only the rows for the active page
+    canPreviousPage,
+    canNextPage,
+    pageOptions,
+    gotoPage,
+    nextPage,
+    previousPage,
+    setPageSize,
+    state: { pageIndex, pageSize },
   } = useTable(
     {
       columns,
-      data: displayedData
+      data: displayedData,
+      initialState: { pageIndex: 0, pageSize: 12 },
     },
     useSortBy,
     useExpanded
@@ -830,14 +765,14 @@ const CreateTicket = () => {
     ));
   };
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
+  // if (loading) {
+  //   return <div className="flex w-full items-center justify-center h-screen">
+  //     <div className="relative">
+  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
+  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
+  //     </div>
+  //   </div>;
+  // }
 
   if (error) {
     return <div className="text-center text-red-600">Error fetching data: {error.message}</div>;
@@ -1317,9 +1252,49 @@ const CreateTicket = () => {
               </table>
             </div>
             {isLoading && (
-              <div className="ml-2 space-y-2 p-2">
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
+              <TableLoadingSkeleton rows={3} columns={6} />
+            )}
+            {loading && (
+              <TableLoadingSkeleton rows={5} columns={6} />
+            )}
+
+            {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
+            {!isLoading && filteredContacts.length > 12 && (
+              <div className="flex items-center justify-between p-4">
+                <span className="text-base text-slate-700">
+                  {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageOptions.length}
+                </span>
+                <div>
+
+                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsLeft className="w-4" />
+                  </button>
+
+                  <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                    <ArrowLeftToLine className="w-4" />
+                  </button>
+                  <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                    <ArrowLeft className="w-4" />
+                  </button>
+                  <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                    <ArrowRight className="w-4" />
+                  </button>
+                  <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                    <ArrowRightToLine className="w-4" />
+                  </button>
+
+                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={filteredContacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                    <ChevronsRight className="w-4" />
+                  </button>
+
+                </div>
+                <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
+                  {[12, 24, 36, 48].map(size => (
+                    <option key={size} value={size}>
+                      {t("ticket_list_table_pagination_show")} {size}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>

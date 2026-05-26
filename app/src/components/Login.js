@@ -7,11 +7,15 @@ import { ToastContainer, toast } from 'react-toastify';
 import { setPrimaryTheme } from "../utils/setTheme";
 
 const Login = () => {
-  const [email, setEmail] = useState(() => localStorage.getItem('rememberedEmail') || '');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('')
+  // const [token, setToken] = useState('AKCDR8dilnE7ISown6JvUY/2CiBNXbEMZuBJTUwAveQBViIrXSeZq/q97oxBrIhd3YYmYBfUW5rul8UDkwFcxFR/Ozj0hvbJLPNRAaT2FeOFtxlyvMKv9QkuTmgzX0atfkgi1Rgcsq+3KX27nNJNoQNuQwqUuTUOWm08U1ZGVlIs+hgxdXUHVxRxEWB9vWjFodYxc91ujzGlOw7I8NQvXw==') //TEMPLATEFREETRIALAZURE
+  //const [token, setToken] = useState('vbhPhRFQXaXPSq1rv801N3DOP+WhR5sw7xmmuAsbjzAQFYGXypuX07Naz+3LcSQ0SuyjhMf5VnqqBtJ1fMISByvklKH9rjNUtKuwCxxMlMzlUVGzccJnRtvrGua+rn+foeUykkB9CoHkWoFfOQP84umQm2Go52GGvfUul6ibRVCb/cBaK4KgvtHRJI0JUUEY')
+  //const [token, setToken] = useState('H0llCbE/B0zmXa8uWKOqegUUL2zHLlomEP013H+eEKyh82Ag6c4KBdR5hkM1b2Liuq2athSackA0l6QOU9tt6+Eud5dIJUITNW1j7Sk80jflNQ92ereo4eI9mIH5EVHRug0AtrL68IoLjBblm8c6jMhxkHbRJhnj+omd2Q0EaHtjEYhRrTh7cHhnw0OFgt0u') // TESTNATIVE2
+  const [token, setToken] = useState('')
+  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [rememberMe, setRememberMe] = useState(() => Boolean(localStorage.getItem('rememberedEmail')));
+  const [rememberMe, setRememberMe] = useState(false);
   const [selectedLang, setSelectedLang] = useState('en'); // Selected in <select>
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -19,9 +23,10 @@ const Login = () => {
 
   useEffect(() => {
     if (window.welloServiceDesk) {
-      const { logo_primary, color_primary } = window.welloServiceDesk;
+      const { logo_primary, token, color_primary } = window.welloServiceDesk;
       setLogo(logo_primary);
       setPrimaryTheme(color_primary);
+      setToken(token)
     }
   }, []);
 
@@ -64,7 +69,7 @@ const Login = () => {
     }
 
     try {
-      const userData = await login(email, password);
+      const userData = await login(token, email, password);
 
       if (userData) {
         navigate("/");

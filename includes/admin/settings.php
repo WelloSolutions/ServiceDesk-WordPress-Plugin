@@ -59,20 +59,50 @@ function wello_servicedesk_settings_sanitizers()
  */
 function wello_servicedesk_register_settings()
 {
-    $sanitizers = wello_servicedesk_settings_sanitizers();
+    register_setting(
+        'wello_servicedesk_options_group',
+        'wello_logo_primary',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+        ]
+    );
 
-    foreach (wello_servicedesk_settings_fields() as $field) {
-        register_setting(
-            'wello_servicedesk_options_group',
-            $field,
-            array(
-                'type'              => 'string',
-                'sanitize_callback' => isset($sanitizers[$field])
-                    ? $sanitizers[$field]
-                    : 'sanitize_text_field',
-            )
-        );
-    }
+    register_setting(
+        'wello_servicedesk_options_group',
+        'wello_logo_secondary',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+        ]
+    );
+
+    register_setting(
+        'wello_servicedesk_options_group',
+        'wello_color_primary',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'sanitize_hex_color',
+        ]
+    );
+
+    register_setting(
+        'wello_servicedesk_options_group',
+        'wello_bg_image',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+        ]
+    );
+
+    register_setting(
+        'wello_servicedesk_options_group',
+        'wello_support_page_content',
+        [
+            'type'              => 'string',
+            'sanitize_callback' => 'wp_kses_post',
+        ]
+    );
 }
 
 /**

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { usePagination, useRowSelect, useSortBy, useTable } from "react-table";
 import {
   ArrowDown,
@@ -16,7 +16,6 @@ import Select from "react-select";
 import makeAnimated from "react-select/animated";
 import axios from "axios";
 import { useAuth } from "../AuthContext.js";
-import { fetchDocuments } from '../services/apiServiceDocuments';
 import { setPrimaryTheme } from "../utils/setTheme";
 
 const animatedComponents = makeAnimated();
@@ -353,8 +352,9 @@ export default function ViewBillingInvoice() {
   const navigate = useNavigate();
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
+
   const [invoices, setInvoices] = useState([]);
-  const [activeTab, setActiveTab] = useState("invoices");
+  const [activeTab, setActiveTab] = useState("orders");
   const [year, setYear] = useState(uniqueYear[0]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -362,11 +362,10 @@ export default function ViewBillingInvoice() {
   const [selectedInvoiceIds, setSelectedInvoiceIds] = useState([]);
   const [downloadError, setDownloadError] = useState("");
 
-  useEffect(() => {
-    setPrimaryTheme(auth?.colorPrimary);
-  }, [auth?.colorPrimary]);
-
-  const apiBaseUrl = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions/';
+  const apiBaseUrl = useMemo(() => {
+    const base = process.env.REACT_APP_API_URL || "https://testservicedeskapi.odysseemobile.com/";
+    return base.endsWith("/") ? base : `${base}/`;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -388,12 +387,20 @@ export default function ViewBillingInvoice() {
         const invoiceType = invoiceTypeByTab[activeTab] || "Invoice";
         const filter = `dateutc_confirmation ge '${dateFrom}' and dateutc_confirmation le '${dateTo}' and invoice_type eq '${invoiceType}'`;
 
-        const res = await fetchDocuments('api/Invoices?$filter=' + encodeURIComponent(filter), 'GET', auth.authKey);
+        const res = await axios({
+          url: `${apiBaseUrl}api/Invoices`,
+          method: "GET",
+          params: { $filter: filter },
+          headers: {
+            Authorization: `Basic ${auth.authKey}`,
+            Accept: "application/json",
+          },
+        });
 
-        const normalizedRows = Array.isArray(res?.value)
-          ? res.value
-          : Array.isArray(res)
-            ? res
+        const normalizedRows = Array.isArray(res?.data?.value)
+          ? res.data.value
+          : Array.isArray(res?.data)
+            ? res.data
             : [];
 
         if (isMounted) setInvoices(normalizedRows);
@@ -409,25 +416,21 @@ export default function ViewBillingInvoice() {
     return () => {
       isMounted = false;
     };
-  }, [activeTab, auth?.authKey, year]);
+  }, [activeTab, auth?.authKey, year, apiBaseUrl]);
 
-  const handleTabChange = useCallback(
-    (tabKey) => {
-      if (tabKey === activeTab) return;
-      setDownloadError("");
-      setSelectedInvoiceIds([]);
-      setIsLoading(true);
-      setActiveTab(tabKey);
-    },
-    [activeTab]
-  );
+  const handleTabChange = (tabKey) => {
+    if (tabKey === activeTab) return;
+    setDownloadError("");
+    setSelectedInvoiceIds([]);
+    setIsLoading(true);
+    setActiveTab(tabKey);
+  };
 
-  const handleSelectionChange = useCallback((selectedRows) => {
+  const handleSelectionChange = (selectedRows) => {
     const ids = selectedRows
       .map((row) => getInvoiceId(row))
       .filter((id) => typeof id === "string" && id.trim().length > 0);
     const uniqueIds = [...new Set(ids)];
-
     setDownloadError("");
     setSelectedInvoiceIds((prev) => {
       if (prev.length === uniqueIds.length && prev.every((item, index) => item === uniqueIds[index])) {
@@ -435,9 +438,9 @@ export default function ViewBillingInvoice() {
       }
       return uniqueIds;
     });
-  }, []);
+  };
 
-  const handleDownloadSelectedInvoices = useCallback(async () => {
+  const handleDownloadSelectedInvoices = async () => {
     if (!auth?.authKey || selectedInvoiceIds.length === 0 || isDownloading || isDownloadingAll) return;
 
     setDownloadError("");
@@ -485,9 +488,9 @@ export default function ViewBillingInvoice() {
     } finally {
       setIsDownloading(false);
     }
-  }, [auth?.authKey, apiBaseUrl, isDownloading, isDownloadingAll, selectedInvoiceIds]);
+  };
 
-  const handleDownloadAllInvoices = useCallback(async () => {
+  const handleDownloadAllInvoices = async () => {
     if (!auth?.authKey || isDownloading || isDownloadingAll) return;
 
     const selectedYear = Number(year?.value);
@@ -547,17 +550,19 @@ export default function ViewBillingInvoice() {
     } finally {
       setIsDownloadingAll(false);
     }
-  }, [apiBaseUrl, auth?.authKey, isDownloading, isDownloadingAll, year]);
+  };
+
+  const rowsForTab = useMemo(() => invoices, [invoices]);
 
   const filteredRows = useMemo(() => {
     const selectedYear = Number(year?.value);
-    return invoices.filter((row) => {
+    return rowsForTab.filter((row) => {
       const rawDate = row.modified_dateutc ?? row.dateutc_confirmation ?? row.date;
       const timestamp = parseDateValue(rawDate);
       if (!timestamp) return false;
       return new Date(timestamp).getUTCFullYear() === selectedYear;
     });
-  }, [invoices, year]);
+  }, [rowsForTab, year]);
 
   const columns = useMemo(() => {
     const firstHeader =
@@ -627,14 +632,12 @@ export default function ViewBillingInvoice() {
       </button>
 
       <div className="mb-4">
-        {/*
         <button
           className={`px-2 md:px-4 py-2 md:mr-2 text-lg font-medium leading-7 ${activeTab === "orders" ? "text-gray-900 border-b-2 border-gray-900" : "text-slate-500"}`}
           onClick={() => handleTabChange("orders")}
         >
           Order History
         </button>
-        */}
         <button
           className={`px-2 md:px-4 py-2 md:mr-2 text-lg font-medium leading-7 ${activeTab === "invoices" ? "text-gray-900 border-b-2 border-gray-900" : "text-slate-500"}`}
           onClick={() => handleTabChange("invoices")}

@@ -2,10 +2,11 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useTable, useSortBy, useExpanded, usePagination } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, BadgeInfo, Circle, CalendarClock, FileText } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, ChevronsLeft, ChevronsRight, BadgeInfo, Circle, CalendarClock, FileText } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 
 const ViewWorkOrderList = () => {
   const navigate = useNavigate();
@@ -15,7 +16,9 @@ const ViewWorkOrderList = () => {
   const [jobsStatus, setJobsStatus] = useState([]);
   const [jobsType, setJobsType] = useState([]);
   const [translationsLoaded, setTranslationsLoaded] = useState(false);
-  const [loading, setLoading] = useState(true);
+  //const [loading, setLoading] = useState(true);
+  const [startRow, setStartRow] = useState(0);
+  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(true);
   const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState(null);
@@ -224,7 +227,7 @@ const ViewWorkOrderList = () => {
         const response = await fetchDocuments(endpoint, 'POST', auth.authKey, payload);
         if (response) {
           setJobs(response);
-          setLoading(false);
+          // setLoading(false);
         }
       } catch (err) {
         setError(err);
@@ -233,8 +236,8 @@ const ViewWorkOrderList = () => {
       }
     };
 
-    fetchWorkOrder(isCompleted);
-  }, [isCompleted, auth]);
+    fetchWorkOrder(isCompleted, startRow, endRow);
+  }, [isCompleted, auth, startRow, endRow]);
 
 
   const handleCalendarClick = useCallback(async (rowId) => {
@@ -410,14 +413,14 @@ const ViewWorkOrderList = () => {
     usePagination,
   );
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
+  // if (loading) {
+  //   return <div className="flex w-full items-center justify-center h-screen">
+  //     <div className="relative">
+  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
+  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
+  //     </div>
+  //   </div>;
+  // }
 
   if (error) {
     return <div className="text-center mt-10 text-red-600">Error fetching jobs: {error.message}</div>;
@@ -651,10 +654,7 @@ const ViewWorkOrderList = () => {
         </div>
 
         {isLoading && (
-          <div className="ml-2 space-y-2 p-2">
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
-          </div>
+          <TableLoadingSkeleton rows={8} columns={6} />
         )}
 
         {/* Pagination Controls - Only show if filteredWorkOrder exceed pageSize (10) */}
@@ -664,6 +664,11 @@ const ViewWorkOrderList = () => {
               {t("work_order_list_table_pagination_page")} {pageIndex + 1} {t("work_order_list_table_pagination_of")} {pageOptions.length}
             </span>
             <div>
+
+              <button onClick={() => {setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev));}} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                <ChevronsLeft className="w-4" />
+              </button>
+
               <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowLeftToLine className="w-4" />
               </button>
@@ -676,6 +681,11 @@ const ViewWorkOrderList = () => {
               <button onClick={() => { gotoPage(pageOptions.length - 1) }} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowRightToLine className="w-4" />
               </button>
+              
+              <button onClick={() => {setStartRow(prev => prev + 500); setEndRow(prev => prev + 500)}} disabled={jobs.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                <ChevronsRight className="w-4" />
+              </button>
+
             </div>
             <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
               {[12, 24, 36, 48].map(size => (
