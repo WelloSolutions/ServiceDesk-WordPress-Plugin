@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useTable, useSortBy, useExpanded } from 'react-table';
+import { useTable, useSortBy, useExpanded, usePagination } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import Calendar from 'react-calendar'
 import 'react-calendar/dist/Calendar.css'
@@ -67,6 +67,11 @@ const CreateTicket = () => {
   });
 
   const [tempFilters, setTempFilters] = useState(filters);
+  const filtersRef = useRef(filters);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   const [fetchBrands, setFetchBrands] = useState();
   const [fetchModels, setFetchModels] = useState();
@@ -107,8 +112,9 @@ const CreateTicket = () => {
   ];
 
   const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null, currentFilters = filters }, startRow, endRow) => {
-      const url = `api/ProjectView/Search?keyword=${currentFilters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${currentFilters.model}&equipmentBrandID=${currentFilters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${currentFilters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
+    async ({ parentOnly, groupKeys = [], parentId = null, currentFilters = null, skipLoading = false }, startRow = 0, endRow = 500) => {
+      const activeFilters = currentFilters || filtersRef.current;
+      const url = `api/ProjectView/Search?keyword=${activeFilters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${activeFilters.model}&equipmentBrandID=${activeFilters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${activeFilters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
 
       const payload = {
         startRow: startRow,
@@ -124,33 +130,37 @@ const CreateTicket = () => {
 
       try {
         const response = await fetchDocuments(url, 'POST', auth.authKey, payload);
-        const mapped = response.map(item => ({
+        const data = Array.isArray(response) ? response : [];
+        const mapped = data.map(item => ({
           ...item,
           subRows: item.has_child ? [] : []
         }));
 
-        if (parentOnly || (!parentOnly && !parentId)) {
+        if (parentOnly) {
           setContacts(mapped);
         }
         if (!parentOnly && parentId) {
           setSubRowsMap(prev => ({ ...prev, [parentId]: mapped }));
         }
-        return await mapped;
+        return mapped;
       } catch (err) {
         console.error(err);
         setError(err);
+        return [];
       } finally {
-        setLoading(false);
+        if (!skipLoading) {
+          setLoading(false);
+        }
       }
     },
-    [auth, filters]
+    [auth]
   );
 
   useEffect(() => {
     const loadInitialData = async () => {
       try {
         // Only load projects once on mount
-        const projects = await fetchProjects({ parentOnly: true, currentFilters: filters }, startRow, endRow);
+        const projects = await fetchProjects({ parentOnly: true, currentFilters: filtersRef.current }, startRow, endRow);
 
         // Extract locations from projects
         const locations = Array.isArray(projects)
@@ -181,7 +191,7 @@ const CreateTicket = () => {
     };
 
     loadInitialData();
-  }, [fetchProjects, filters, startRow, endRow]);
+  }, [fetchProjects, startRow, endRow]);
 
   const handleLocationChange = (e) => {
     const value = e.target.value;
@@ -422,10 +432,26 @@ const CreateTicket = () => {
 
     setIsLoading(true);
     try {
-      setFilters(tempFilters);
+      const parentData = await fetchProjects({ parentOnly: true, currentFilters: tempFilters, skipLoading: true }, startRow, endRow) || [];
+      const filteredData = await fetchProjects({ parentOnly: false, currentFilters: tempFilters, skipLoading: true }, startRow, endRow) || [];
 
-      // Single API call with all filters applied
-      await fetchProjects({ parentOnly: true, currentFilters: tempFilters });
+      const mergedSubRowsMap = { ...subRowsMap };
+      filteredData.forEach(row => {
+        if (row.parentId) {
+          if (!mergedSubRowsMap[row.parentId]) mergedSubRowsMap[row.parentId] = [];
+          if (!mergedSubRowsMap[row.parentId].some(r => r.id === row.id)) {
+            mergedSubRowsMap[row.parentId].push(row);
+          }
+        } else {
+          if (!parentData.some(r => r.id === row.id)) {
+            parentData.push(row);
+          }
+        }
+      });
+
+      setContacts(parentData);
+      setSubRowsMap(mergedSubRowsMap);
+      setFilters(tempFilters);
     } catch (err) {
       console.error('Failed to apply filters:', err);
       toast.error('Error applying filters');
@@ -441,10 +467,8 @@ const CreateTicket = () => {
 
     try {
       setTempFilters(clearedFilters);
+      await fetchProjects({ parentOnly: true, currentFilters: clearedFilters, skipLoading: true }, startRow, endRow);
       setFilters(clearedFilters);
-
-      // Single API call with cleared filters
-      await fetchProjects({ parentOnly: true, currentFilters: clearedFilters });
     } catch (error) {
       console.error("Reset failed:", error);
     } finally {
@@ -694,7 +718,8 @@ const CreateTicket = () => {
   const {
     getTableProps,
     headerGroups,
-    rows,// Instead of using 'rows', we'll use page, which has only the rows for the active page
+    page,
+    // rows,// fallback if needed, but pagination should use `page`
     canPreviousPage,
     canNextPage,
     pageOptions,
@@ -710,7 +735,8 @@ const CreateTicket = () => {
       initialState: { pageIndex: 0, pageSize: 12 },
     },
     useSortBy,
-    useExpanded
+    useExpanded,
+    usePagination
   );
 
   useEffect(() => {
@@ -1247,7 +1273,7 @@ const CreateTicket = () => {
                   ))}
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {!isLoading && renderRows(rows.map(r => r.original))}
+                  {!isLoading && renderRows(page.map(r => r.original))}
                 </tbody>
               </table>
             </div>
@@ -1259,10 +1285,10 @@ const CreateTicket = () => {
             )}
 
             {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
-            {!isLoading && filteredContacts.length > 12 && (
+            {!isLoading && (filteredContacts?.length ?? 0) > 12 && (
               <div className="flex items-center justify-between p-4">
                 <span className="text-base text-slate-700">
-                  {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageOptions.length}
+                  {t("create_ticket_table_pagination_page")} {pageIndex + 1} {t("create_ticket_table_pagination_of")} {(pageOptions?.length ?? 0)}
                 </span>
                 <div>
 
@@ -1279,11 +1305,11 @@ const CreateTicket = () => {
                   <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                     <ArrowRight className="w-4" />
                   </button>
-                  <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                  <button onClick={() => gotoPage((pageOptions?.length ?? 1) - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                     <ArrowRightToLine className="w-4" />
                   </button>
 
-                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={filteredContacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
+                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={(filteredContacts?.length ?? 0) <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
                     <ChevronsRight className="w-4" />
                   </button>
 
@@ -1291,7 +1317,7 @@ const CreateTicket = () => {
                 <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
                   {[12, 24, 36, 48].map(size => (
                     <option key={size} value={size}>
-                      {t("ticket_list_table_pagination_show")} {size}
+                      {t("create_ticket_table_pagination_show")} {size}
                     </option>
                   ))}
                 </select>

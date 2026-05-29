@@ -632,12 +632,12 @@ export default function ViewBillingInvoice() {
       </button>
 
       <div className="mb-4">
-        <button
+        {/* <button
           className={`px-2 md:px-4 py-2 md:mr-2 text-lg font-medium leading-7 ${activeTab === "orders" ? "text-gray-900 border-b-2 border-gray-900" : "text-slate-500"}`}
           onClick={() => handleTabChange("orders")}
         >
           Order History
-        </button>
+        </button> */}
         <button
           className={`px-2 md:px-4 py-2 md:mr-2 text-lg font-medium leading-7 ${activeTab === "invoices" ? "text-gray-900 border-b-2 border-gray-900" : "text-slate-500"}`}
           onClick={() => handleTabChange("invoices")}

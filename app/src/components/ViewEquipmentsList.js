@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
-import { useTable, useSortBy, useExpanded } from 'react-table';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { useTable, useSortBy, useExpanded, usePagination } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments.js';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext.js';
@@ -21,10 +21,9 @@ const ViewInstallations = () => {
   setPrimaryTheme(auth?.colorPrimary);
   const [contacts, setContacts] = useState([]);
   const [subRowsMap, setSubRowsMap] = useState({});
-  const [loading, setLoading] = useState(true);
   const [startRow, setStartRow] = useState(0);
   const [endRow, setEndRow] = useState(500);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [renderedSubRows, setRenderedSubRows] = useState({});
   const [error, setError] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -47,6 +46,11 @@ const ViewInstallations = () => {
   });
 
   const [tempFilters, setTempFilters] = useState(filters);
+  const filtersRef = useRef(filters);
+
+  useEffect(() => {
+    filtersRef.current = filters;
+  }, [filters]);
 
   const [fetchBrands, setFetchBrands] = useState();
   const [fetchModels, setFetchModels] = useState();
@@ -82,8 +86,9 @@ const ViewInstallations = () => {
   }), []);
 
   const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null }, startRow = 0, endRow = 500) => {
-      const url = `api/ProjectView/Search?keyword=${filters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${filters.model}&equipmentBrandID=${filters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${filters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
+    async ({ parentOnly, groupKeys = [], parentId = null, filterParams = null, skipLoading = false }, startRow = 0, endRow = 500) => {
+      const activeFilters = filterParams || filtersRef.current;
+      const url = `api/ProjectView/Search?keyword=${activeFilters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${activeFilters.model}&equipmentBrandID=${activeFilters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${activeFilters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
 
       const payload = {
         startRow: startRow,
@@ -115,10 +120,12 @@ const ViewInstallations = () => {
         console.error(err);
         setError(err);
       } finally {
-        setLoading(false);
+        if (!skipLoading) {
+          setIsLoading(false);
+        }
       }
     },
-    [auth, filters]
+    [auth]
   );
 
   useEffect(() => {
@@ -189,7 +196,10 @@ const ViewInstallations = () => {
 
 
   useEffect(() => {
+    if (!isModalOpen) return;
+
     const fetchBrands = async () => {
+      if (brandsLoaded) return;
       try {
         const resbrands = await fetchDocuments('api/EquipmentBrand', 'GET', auth.authKey);
         setFetchBrands(resbrands.value);
@@ -200,6 +210,7 @@ const ViewInstallations = () => {
     };
 
     const fetchModels = async () => {
+      if (modelsLoaded) return;
       try {
         const resmodels = await fetchDocuments('api/EquipmentModel', 'GET', auth.authKey);
         setFetchModels(resmodels.value);
@@ -210,6 +221,7 @@ const ViewInstallations = () => {
     };
 
     const fetchStatuses = async () => {
+      if (statusesLoaded) return;
       try {
         const restatuses = await fetchDocuments('api/ProjectStatus', 'GET', auth.authKey);
         setFetchStatuses(restatuses.value);
@@ -219,16 +231,10 @@ const ViewInstallations = () => {
       }
     };
 
-    if (isModalOpen && !brandsLoaded) {
-      fetchBrands();
-    }
-    if (isModalOpen && !modelsLoaded) {
-      fetchModels();
-    }
-    if (isModalOpen && !statusesLoaded) {
-      fetchStatuses();
-    }
-  }, [auth, isModalOpen, brandsLoaded, modelsLoaded, statusesLoaded]);
+    fetchBrands();
+    fetchModels();
+    fetchStatuses();
+  }, [isModalOpen, auth.authKey, brandsLoaded, modelsLoaded, statusesLoaded]);
 
   const brandOptions = Array.isArray(fetchBrands)
     ? fetchBrands
@@ -303,13 +309,11 @@ const ViewInstallations = () => {
 
     setIsLoading(true);
     try {
-      setFilters(tempFilters);
-
-      // 1️⃣ Fetch parent-only rows for tree structure
-      const parentData = await fetchProjects({ parentOnly: true });
+      // 1️⃣ Fetch parent-only rows for tree structure with new filters
+      const parentData = await fetchProjects({ parentOnly: true, filterParams: tempFilters, skipLoading: true });
 
       // 2️⃣ Fetch filtered rows with parentOnly: false to include children
-      const filteredData = await fetchProjects({ parentOnly: false, filters: tempFilters });
+      const filteredData = await fetchProjects({ parentOnly: false, filterParams: tempFilters, skipLoading: true });
 
       // 3️⃣ Merge parent + filtered children
       // Keep parents as the base, and for any filtered child, ensure they appear under correct parent
@@ -331,6 +335,7 @@ const ViewInstallations = () => {
 
       setContacts(parentData);
       setSubRowsMap(mergedSubRowsMap);
+      setFilters(tempFilters);
     } catch (err) {
       console.error('Failed to apply filters:', err);
     } finally {
@@ -345,9 +350,9 @@ const ViewInstallations = () => {
     setIsLoading(true);
     try {
       setTempFilters(clearedFilters);
-      setFilters(clearedFilters);
-      const data = await fetchProjects({ parentOnly: true });
+      const data = await fetchProjects({ parentOnly: true, filterParams: clearedFilters, skipLoading: true });
       setContacts(data);
+      setFilters(clearedFilters);
     } catch (err) {
       console.error('Reset failed:', err);
     } finally {
@@ -530,7 +535,7 @@ const ViewInstallations = () => {
   const {
     getTableProps,
     headerGroups,
-    rows,// Instead of using 'rows', we'll use page, which has only the rows for the active page
+    page,// Use page instead of rows for pagination
     canPreviousPage,
     canNextPage,
     pageOptions,
@@ -546,7 +551,8 @@ const ViewInstallations = () => {
       initialState: { pageIndex: 0, pageSize: 12 },
     },
     useSortBy,
-    useExpanded
+    useExpanded,
+    usePagination
   );
 
   useEffect(() => {
@@ -888,55 +894,53 @@ const ViewInstallations = () => {
 
         {/* Table displaying filtered data */}
         <div className="w-full overflow-x-auto">
-          <table {...getTableProps()} className="min-w-full divide-y divide-gray-200 border border-gray-300">
-            <thead className="bg-white">
-              {headerGroups.map((headerGroup, headerIndex) => (
-                <tr key={(headerGroup.getHeaderGroupProps() || {}).key || headerIndex} {...(function () { const { key, ...r } = headerGroup.getHeaderGroupProps(); return r; })()} className="bg-white">
-                  {headerGroup.headers.map((column, index) => {
-                    const sortProps = column.canSort ? column.getSortByToggleProps() : {};
-                    const headerProps = column.getHeaderProps(sortProps);
-                    const { key, ...restHeaderProps } = headerProps;
+          {!isLoading ? (
+            <table {...getTableProps()} className="min-w-full divide-y divide-gray-200 border border-gray-300">
+              <thead className="bg-white">
+                {headerGroups.map((headerGroup, headerIndex) => (
+                  <tr key={(headerGroup.getHeaderGroupProps() || {}).key || headerIndex} {...(function () { const { key, ...r } = headerGroup.getHeaderGroupProps(); return r; })()} className="bg-white">
+                    {headerGroup.headers.map((column, index) => {
+                      const sortProps = column.canSort ? column.getSortByToggleProps() : {};
+                      const headerProps = column.getHeaderProps(sortProps);
+                      const { key, ...restHeaderProps } = headerProps;
 
-                    return (
-                      <th
-                        key={column.id || column.accessor}
-                        {...restHeaderProps}
-                        className={`px-2 py-3 text-left whitespace-nowrap text-slate-500 text-base font-medium leading-none ${index !== 0 ? 'border-r border-gray-300' : ''} ${column.canSort ? 'cursor-pointer select-none' : ''}`}
-                        aria-sort={column.isSorted ? (column.isSortedDesc ? 'descending' : 'ascending') : 'none'}
-                      >
-                        <div className="flex items-center">
-                          {column.render('Header')}
-                          {column.isSorted ? (
-                            column.isSortedDesc ? (
-                              <ArrowUp className="inline w-4 h-4 ml-1" />
-                            ) : (
-                              <ArrowDown className="inline w-4 h-4 ml-1" />
-                            )
-                          ) : null}
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              ))}
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {!isLoading && renderRows(rows.map(r => r.original))}
-            </tbody>
-          </table>
+                      return (
+                        <th
+                          key={column.id || column.accessor}
+                          {...restHeaderProps}
+                          className={`px-2 py-3 text-left whitespace-nowrap text-slate-500 text-base font-medium leading-none ${index !== 0 ? 'border-r border-gray-300' : ''} ${column.canSort ? 'cursor-pointer select-none' : ''}`}
+                          aria-sort={column.isSorted ? (column.isSortedDesc ? 'descending' : 'ascending') : 'none'}
+                        >
+                          <div className="flex items-center">
+                            {column.render('Header')}
+                            {column.isSorted ? (
+                              column.isSortedDesc ? (
+                                <ArrowUp className="inline w-4 h-4 ml-1" />
+                              ) : (
+                                <ArrowDown className="inline w-4 h-4 ml-1" />
+                              )
+                            ) : null}
+                          </div>
+                        </th>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-200">
+                {renderRows(page.map(r => r.original))}
+              </tbody>
+            </table>
+          ) : (
+            <TableLoadingSkeleton rows={8} columns={6} />
+          )}
         </div>
-        {isLoading && (
-          <TableLoadingSkeleton rows={3} columns={6} />
-        )}
-        {loading && (
-          <TableLoadingSkeleton rows={5} columns={6} />
-        )}
 
         {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
         {!isLoading && filteredContacts.length > 12 && (
           <div className="flex items-center justify-between p-4">
             <span className="text-base text-slate-700">
-              {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageOptions.length}
+              {t("equipments_list_table_pagination_page")} {pageIndex + 1} {t("equipments_list_table_pagination_of")} {pageOptions.length}
             </span>
             <div>
 
@@ -965,7 +969,7 @@ const ViewInstallations = () => {
             <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
               {[12, 24, 36, 48].map(size => (
                 <option key={size} value={size}>
-                  {t("ticket_list_table_pagination_show")} {size}
+                  {t("equipments_list_table_pagination_show")} {size}
                 </option>
               ))}
             </select>
