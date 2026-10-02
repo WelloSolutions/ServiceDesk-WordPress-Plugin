@@ -92,7 +92,14 @@ const CreateTicket = () => {
   const maxFileSize = 5 * 1024 * 1024;
 
   const [date, setDate] = React.useState(new Date());
-  const [selectedTime, setSelectedTime] = useState(null);
+  // const [selectedTime, setSelectedTime] = useState(null);
+  const [selectedTime, setSelectedTime] = useState(() => {
+      const now = new Date();
+  
+      return `${String(now.getHours()).padStart(2, "0")}:${String(
+        now.getMinutes()
+      ).padStart(2, "0")}`;
+    });
   const [isOpen, setIsOpen] = useState(true);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [responseId, setResponseId] = useState();
@@ -878,7 +885,7 @@ const CreateTicket = () => {
 
       const headers = {};
       if (auth?.authKey) {
-        headers["Authorization"] = auth.authKey;
+        headers["Authorization"] = `Basic ${auth.authKey}`;
       }
 
       // ✅ Upload each file in its own request
