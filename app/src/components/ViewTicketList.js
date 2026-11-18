@@ -1,43 +1,84 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
+import { APP_BASENAME } from '../config';
 import { useTable, useSortBy, usePagination } from 'react-table';
-//import { fetchData } from '../services/apiService.js';
 import { fetchDocuments } from '../services/apiServiceDocuments.js';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { BadgeInfo, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, ChevronsLeft, ChevronsRight, Circle } from 'lucide-react';
+import { BadgeInfo, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, Circle, X } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
-import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
+import { TableSkeletonRows } from '../utils/setTableSkleton.js';
+import ColumnFilter, { isFilterActive } from './ColumnFilter';
+
+// SD-510: sorting and filtering are done by the API (TaskView/SearchPaged). Rows are loaded in blocks of
+// BLOCK_SIZE and cached per tab + sort + filters until the user leaves the screen; pages are cut from the cached blocks.
+const PAGE_SIZES = [12, 24, 36, 48];
+const BLOCK_SIZE = 144; // divisible by every page size, so a page always fits in one block
+
+// Table column id -> filter column of TaskView/SearchPaged
+const FILTER_COLUMNS = {
+  id2: 'reference',
+  date_create: 'date_create',
+  subject: 'name',
+  assigned_to_user_fullname: 'assigned',
+  task_type_name: 'task_type',
+  task_status_name: 'task_status',
+};
+
+const toApiFilters = (filters) =>
+  Object.entries(filters)
+    .filter(([columnId, filter]) => FILTER_COLUMNS[columnId] && isFilterActive(filter))
+    .map(([columnId, filter]) => ({
+      column: FILTER_COLUMNS[columnId],
+      op: filter.op,
+      value: filter.value ?? null,
+      value2: filter.value2 ?? null,
+      values: filter.values ?? null,
+    }));
+
+const translateById = (list, id, lang, fallback) => {
+  const item = Array.isArray(list) ? list.find(x => x.id === id) : undefined;
+  return item?.translations?.find(tr => tr.language_code === lang)?.value ?? item?.name ?? fallback;
+};
 
 const ViewTicketList = () => {
   const navigate = useNavigate();
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
   const [tickets, setTickets] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const [ticketsStatus, setTicketsStatus] = useState([]);
   const [ticketsType, setTicketsType] = useState([]);
   const [translationsLoaded, setTranslationsLoaded] = useState(false);
-  // const [loading, setLoading] = useState(true);
-  const [startRow, setStartRow] = useState(0);
-  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(true);
   const [isArchived, setIsArchived] = useState(false);
   const [error, setError] = useState(null);
   const [selectedTab, setSelectedTab] = useState('open');
   const { t, i18n } = useTranslation('ticketList');
+  const { t: tCommon } = useTranslation('common');
+  const lang = i18n.language.split("-")[0].toUpperCase();
+  // Column filters: table column id -> { op, value, value2, values }
+  const [filters, setFilters] = useState({});
+  const setColumnFilter = useCallback((columnId, filter) => {
+    setFilters(prev => {
+      const next = { ...prev };
+      if (filter) next[columnId] = filter; else delete next[columnId];
+      return next;
+    });
+  }, []);
+  const hasFilters = Object.values(filters).some(isFilterActive);
 
   useEffect(() => {
     if (translationsLoaded) return;
 
     const fetchStatusTranslations = async () => {
       const response = await fetchDocuments('api/TaskStatus/Translations', 'GET', auth.authKey);
-      setTicketsStatus(response);
-      //console.log('Task Status Translations:', response);
+      setTicketsStatus(Array.isArray(response) ? response : []);
     };
     const fetchTypeTranslations = async () => {
       const response = await fetchDocuments('api/TaskType/Translations', 'GET', auth.authKey);
-      setTicketsType(response);
-      //console.log('Task Type Translations:', response);
+      setTicketsType(Array.isArray(response) ? response : []);
     };
     fetchStatusTranslations();
     fetchTypeTranslations();
@@ -102,45 +143,20 @@ const ViewTicketList = () => {
     },
   }), []);
 
-  useEffect(() => {
-    const fetchTickets = async (archivedStatus, startRow = 0, endRow = 500) => {
-      setIsLoading(true);
-      try {
-        const payload = {
-          "period": "",
-          "archived": archivedStatus,
-          "query_object":
-          {
-            "startRow": startRow,
-            "endRow": endRow,
-            "rowGroupCols": [],
-            "valueCols": [],
-            "pivotCols": [],
-            "pivotMode": false,
-            "groupKeys": [],
-            "filterModel": {},
-            "sortModel": []
-          }
-        }
-        const response = await fetchDocuments('api/TaskView/Search', 'POST', auth.authKey, payload);
-        setTickets(response); // Adjusted for your API's response structure
-        // setLoading(false);
-      } catch (err) {
-        setError(err);
-        // setLoading(false);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+  // Options of the type / status filters: id + name in the current language (same as the cells)
+  const toFilterOptions = useCallback((list) =>
+    (Array.isArray(list) ? list : [])
+      .map(item => ({ value: String(item.id), label: translateById(list, item.id, lang, item.name ?? '') }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+  [lang]);
 
-    fetchTickets(isArchived, startRow, endRow);
-  }, [isArchived, auth, startRow, endRow]);
-
+  // Column ids are the sort keys accepted by the API
   const columns = useMemo(
     () => [
       {
         Header: t('tickets_list_table_heading_reference_text'),
         accessor: 'id2',
+        filterType: 'text',
         Cell: ({ row }) => (
           <div className="text-center">
             <span className="font-medium">
@@ -150,89 +166,164 @@ const ViewTicketList = () => {
       },
       {
         Header: t('tickets_list_table_heading_created_date_text'), accessor: 'date_create',
+        filterType: 'date',
         Cell: ({ value }) => new Date(value).toLocaleDateString("en-GB")
       },
       {
         Header: t('tickets_list_table_heading_name_text'), accessor: 'subject',
-        Cell: ({ value }) => (
-          <span>
-            {value.length > 30 ? value.slice(0, 50) + '...' : value}
-          </span>
-        ),
+        filterType: 'text',
+        Cell: ({ value }) => {
+          const text = value ?? '';
+          return <span>{text.length > 50 ? text.slice(0, 50) + '...' : text}</span>;
+        },
       },
       {
         Header: t('tickets_list_table_heading_assigned_name_text'), accessor: 'assigned_to_user_fullname',
+        filterType: 'text',
         Cell: ({ row }) => (
-          row.original.assigned_to_user_fullname?.trim() ? row.original.assigned_to_user_fullname : 'Not Assigned'
+          row.original.assigned_to_user_fullname?.trim() ? row.original.assigned_to_user_fullname : t('tickets_list_not_assigned_label')
         ),
       },
       {
         Header: t('tickets_list_table_heading_type_text'), accessor: 'task_type_name',
+        filterType: 'options',
+        filterOptions: toFilterOptions(ticketsType),
         Cell: ({ row }) => (
           <span className={`text-base font-medium`}>
-            {
-              ticketsType.find(t => t.id === row.original.task_type_id)?.translations
-                ?.find(t => t.language_code === i18n.language.split("-")[0].toUpperCase())?.value
-              ?? ticketsType.find(t => t.id === row.original.task_type_id)?.name
-              ?? row.original.task_type_name
-            }
+            {translateById(ticketsType, row.original.task_type_id, lang, row.original.task_type_name)}
           </span>
         ),
       },
       {
         Header: t('tickets_list_table_heading_status_text'), accessor: 'task_status_name',
+        filterType: 'options',
+        filterOptions: toFilterOptions(ticketsStatus),
         Cell: ({ row }) => (
           <span className={`text-base min-w-max inline-flex items-center font-medium pe-3 px-2 pb-1 pt-1 rounded-full ${statusTicket[row.original.task_status_id]?.statusColors || "bg-gray-200 text-gray-800"}`}>
-            <Circle className={`inline w-2 h-2 mr-1 rounded-full ${statusTicket[row.original.task_status_id]?.statusDotColors || "bg-gray-800 text-gray-800"}`} /> {row.original.project_status_name}
-            {
-              ticketsStatus.find(t => t.id === row.original.task_status_id)?.translations
-                ?.find(t => t.language_code === i18n.language.split("-")[0].toUpperCase())?.value
-              ?? ticketsStatus.find(t => t.id === row.original.task_status_id)?.name
-              ?? row.original.task_status_name
-            }
+            <Circle className={`inline w-2 h-2 mr-1 rounded-full ${statusTicket[row.original.task_status_id]?.statusDotColors || "bg-gray-800 text-gray-800"}`} />
+            {translateById(ticketsStatus, row.original.task_status_id, lang, row.original.task_status_name)}
           </span>
         ),
       },
     ],
-    [ticketsType, ticketsStatus, statusTicket, t, i18n]
+    [ticketsType, ticketsStatus, statusTicket, t, lang, toFilterOptions]
   );
 
   const {
     getTableProps,
     getTableBodyProps,
     headerGroups,
-    page, // Use page instead of rows for pagination
+    page,
     prepareRow,
     canPreviousPage,
     canNextPage,
-    pageOptions,
     gotoPage,
     nextPage,
     previousPage,
     setPageSize,
-    state: { pageIndex, pageSize },
+    state: { pageIndex, pageSize, sortBy },
   } = useTable(
     {
       columns,
       data: tickets,
-      initialState: { pageIndex: 0, pageSize: 12 }, // Set initial page size to 10
+      manualPagination: true,
+      manualSortBy: true,
+      pageCount,
+      autoResetPage: false,
+      autoResetSortBy: false,
+      disableMultiSort: true,
+      initialState: { pageIndex: 0, pageSize: PAGE_SIZES[0] },
     },
     useSortBy,
     usePagination
   );
 
-  // if (loading) {
-  //   return <div className="flex w-full items-center justify-center h-screen">
-  //     <div className="relative">
-  //       <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-  //       <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-  //     </div>
-  //   </div>;
-  // }
+  // Tab + sort + filters: when it changes the list restarts at the first page
+  const apiFilters = useMemo(() => toApiFilters(filters), [filters]);
+  const queryKey = `${isArchived}|${JSON.stringify(sortBy)}|${JSON.stringify(apiFilters)}`;
+  const prevQueryKey = useRef(queryKey);
+  const requestSeq = useRef(0);
+  // queryKey -> { total, blocks: Map<blockIndex, rows[]>, pending: Map<blockIndex, Promise> }.
+  // Kept until the user leaves the screen; a page refresh loads fresh data.
+  const cacheRef = useRef(new Map());
+  const authKey = auth?.authKey;
 
-  if (error) {
-    return <div className="text-center mt-10 text-red-600">Error fetching tickets: {error.message}</div>;
-  }
+  useEffect(() => {
+    if (prevQueryKey.current !== queryKey) {
+      prevQueryKey.current = queryKey;
+      if (pageIndex !== 0) {
+        gotoPage(0); // the effect runs again for page 0
+        return;
+      }
+    }
+
+    const sort = sortBy[0];
+    let entry = cacheRef.current.get(queryKey);
+    if (!entry) {
+      entry = { total: null, blocks: new Map(), pending: new Map() };
+      cacheRef.current.set(queryKey, entry);
+    }
+
+    // Loads one block of BLOCK_SIZE rows once; concurrent calls share the same request
+    const loadBlock = (blockIndex) => {
+      if (entry.blocks.has(blockIndex)) return Promise.resolve();
+      if (entry.pending.has(blockIndex)) return entry.pending.get(blockIndex);
+
+      const payload = {
+        archived: isArchived,
+        page: blockIndex,
+        pageSize: BLOCK_SIZE,
+        sortBy: sort ? sort.id : null,
+        sortDesc: sort ? !!sort.desc : false,
+        filters: apiFilters,
+      };
+      const request = fetchDocuments('api/TaskView/SearchPaged', 'POST', authKey, payload)
+        .then(response => {
+          entry.total = response?.total ?? 0;
+          entry.blocks.set(blockIndex, response?.items ?? []);
+        })
+        .finally(() => entry.pending.delete(blockIndex));
+      entry.pending.set(blockIndex, request);
+      return request;
+    };
+
+    const firstRow = pageIndex * pageSize;
+    const blockIndex = Math.floor(firstRow / BLOCK_SIZE); // a page never spans two blocks (BLOCK_SIZE % pageSize === 0)
+    const offset = firstRow % BLOCK_SIZE;
+
+    const show = () => {
+      const rows = entry.blocks.get(blockIndex) ?? [];
+      setTickets(rows.slice(offset, offset + pageSize));
+      setTotal(entry.total);
+      setPageCount(Math.max(1, Math.ceil(entry.total / pageSize)));
+      setError(null);
+      setIsLoading(false);
+
+      // On the last page of a block, load the next block in the background
+      const nextBlockStart = (blockIndex + 1) * BLOCK_SIZE;
+      if (offset + pageSize >= BLOCK_SIZE && nextBlockStart < entry.total) {
+        loadBlock(blockIndex + 1).catch(() => { }); // retried when the page is opened
+      }
+    };
+
+    const seq = ++requestSeq.current;
+    if (entry.blocks.has(blockIndex)) {
+      show();
+      return;
+    }
+
+    setIsLoading(true);
+    loadBlock(blockIndex)
+      .then(() => {
+        if (seq === requestSeq.current) show(); // ignore if the user moved on meanwhile
+      })
+      .catch(err => {
+        if (seq === requestSeq.current) {
+          setError(err);
+          setIsLoading(false);
+        }
+      });
+  }, [queryKey, pageIndex, pageSize, isArchived, sortBy, apiFilters, gotoPage, authKey]);
 
   return (
     <div className="w-full mx-auto p-1 md:p-4">
@@ -240,7 +331,7 @@ const ViewTicketList = () => {
 
       {/* Back Button */}
       <button
-        onClick={() => navigate('/')} // Navigate back one step in history
+        onClick={() => navigate('/')}
         className="flex items-center mb-6 font-semibold text-zinc-900 text-base"
       >
         <ArrowLeft className="mr-2 w-5 h-5" /> {t("tickets_list_page_go_back")}
@@ -262,9 +353,21 @@ const ViewTicketList = () => {
           </button>
         </div>
 
-        <div className="bg-blue-100 flex items-center text-blue-500 text-base font-normal px-4 py-1 mb-2 rounded-lg">
-          <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("tickets_list_page_helping_text")}
+        <div className="bg-blue-100 flex items-center justify-between text-blue-500 text-base font-normal px-4 py-1 mb-2 rounded-lg">
+          <span className="flex items-center">
+            <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("tickets_list_page_helping_text")}
+          </span>
+          {hasFilters && (
+            <button onClick={() => setFilters({})} className="flex items-center text-sm font-medium text-primary hover:underline">
+              <X className="w-4 h-4 mr-1" /> {tCommon("filter_clear_all")}
+            </button>
+          )}
         </div>
+
+        {error && (
+          <div className="text-center my-4 text-red-600">Error fetching tickets: {error.message}</div>
+        )}
+
         <div className="overflow-x-auto">
           <table {...getTableProps()} className="min-w-full divide-y divide-gray-200 border border-gray-300">
             <thead className="bg-white">
@@ -280,6 +383,15 @@ const ViewTicketList = () => {
                         <th key={headerKey || colIdx} {...restHeaderProps}
                           className="p-2 whitespace-nowrap text-slate-500 text-base font-medium leading-none">
                           {column.render('Header')}
+                          {column.filterType && (
+                            <ColumnFilter
+                              type={column.filterType}
+                              ops={column.filterOps}
+                              options={column.filterOptions}
+                              value={filters[column.id]}
+                              onChange={(filter) => setColumnFilter(column.id, filter)}
+                            />
+                          )}
                           {column.isSorted ? (
                             column.isSortedDesc ? (
                               <ArrowDown className="inline w-4 h-4 ml-1" />
@@ -303,7 +415,7 @@ const ViewTicketList = () => {
                   return (
                     <tr key={rowKey || row.original.id || rowIdx} {...restRowProps}
                       className="cursor-pointer hover:bg-primary/50 hover:text-primary-foreground transition-colors duration-200 ease-in-out"
-                      onClick={() => window.open(`${window.location.origin}/service-desk/ticket/${row.original.id}`, "_blank")}>
+                      onClick={() => window.open(`${window.location.origin}${APP_BASENAME}/ticket/${row.original.id}`, "_blank")}>
                       {row.cells.map((cell, cellIdx) => {
                         const cellProps = cell.getCellProps();
                         const { key: cellKey, ...restCellProps } = cellProps;
@@ -316,46 +428,42 @@ const ViewTicketList = () => {
                     </tr>
                   );
                 })}
+              {/* Skeleton inside the table: lines up with the columns and keeps the previous page's row count */}
+              {isLoading && (
+                <TableSkeletonRows rows={page.length} columns={columns.length} wideColumns={[2]} />
+              )}
+              {!isLoading && !error && tickets.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} className="px-2 py-6 text-center text-base text-slate-500">
+                    {t("tickets_list_no_results")}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        {isLoading && (
-          <TableLoadingSkeleton rows={8} columns={6} />
-        )}
-
-        {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
-        {!isLoading && tickets.length > 12 && (
+        {total > 0 && (
           <div className="flex items-center justify-between p-4">
             <span className="text-base text-slate-700">
-              {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageOptions.length}
+              {t("ticket_list_table_pagination_page")} {pageIndex + 1} {t("ticket_list_table_pagination_of")} {pageCount}
             </span>
             <div>
-
-              <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                <ChevronsLeft className="w-4" />
-              </button>
-
-              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowLeftToLine className="w-4" />
               </button>
-              <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => previousPage()} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowLeft className="w-4" />
               </button>
-              <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => nextPage()} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowRight className="w-4" />
               </button>
-              <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => gotoPage(pageCount - 1)} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowRightToLine className="w-4" />
               </button>
-
-              <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={tickets.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                <ChevronsRight className="w-4" />
-              </button>
-
             </div>
             <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
-              {[12, 24, 36, 48].map(size => (
+              {PAGE_SIZES.map(size => (
                 <option key={size} value={size}>
                   {t("ticket_list_table_pagination_show")} {size}
                 </option>

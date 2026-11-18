@@ -1,4 +1,5 @@
 {
+  "login_form_domain": "Domein",
   "login_form_button": "Inloggen",
   "login_form_email": "Voer hier uw e-mailadres in",
   "login_form_password": "Wachtwoord",

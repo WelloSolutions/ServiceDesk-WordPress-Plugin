@@ -15,5 +15,6 @@
   "tickets_list_table_heading_status_text": "Status",
   "tickets_list_table_heading_type_text": "Type",
   "tickets_list_toggle_completed_tickets_text": "Gesloten tickets",
-  "tickets_list_toggle_open_tickets_text": "Openstaande tickets"
+  "tickets_list_toggle_open_tickets_text": "Openstaande tickets",
+  "tickets_list_no_results": "Geen tickets gevonden."
 }

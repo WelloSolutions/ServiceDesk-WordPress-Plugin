@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { publicAsset } from '../config';
 import { Menu, X, Languages, FileBadge, ChevronRight, ChevronLeft, House, Wrench, Ticket, Calendar, Users, Drill, MessageCircleQuestion, Folder, Settings, LogOut } from "lucide-react";
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
@@ -16,8 +17,8 @@ export default function DashboardSidebar() {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const isMobile = window.innerWidth < 768;
     const [isCollapsed, setIsCollapsed] = useState(false);
-    const [logo, setLogo] = useState('/service-desk/logo.png');
-    const [logo_2, setLogo_2] = useState('/service-desk/logo_2.png');
+    const [logo, setLogo] = useState(publicAsset('logo.png'));
+    const [logo_2, setLogo_2] = useState(publicAsset('logo_2.png'));
     const { i18n } = useTranslation();
     // const userLangShort = auth?.userLang?.split('-')[0];
     const { t } = useTranslation('dashboard');

@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { publicAsset } from '../config';
 import { NotebookPen, Ticket, CalendarDays, FileText } from "lucide-react";
 import { Link } from 'react-router-dom';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
 
 const Home = () => {
-  const [banner_img, setBanner_img] = useState('/service-desk/banner_img.png');
+  const [banner_img, setBanner_img] = useState(publicAsset('banner_img.png'));
   const { t } = useTranslation('home');
 
   useEffect(() => {

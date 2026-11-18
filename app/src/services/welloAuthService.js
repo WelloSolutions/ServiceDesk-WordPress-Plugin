@@ -1,13 +1,15 @@
 import axios from 'axios';
 
-const WELLO_API_URL = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions';
+import { API_BASE_URL } from '../config';
+
+const WELLO_API_URL = API_BASE_URL;
 
 function apiUrl(path) {
   return `${WELLO_API_URL.replace(/\/$/, '')}${path}`;
 }
 
 function getServiceAccessToken() {
-  return window.welloServiceDesk?.service_access_token || process.env.REACT_APP_SERVICE_ACCESS_TOKEN || '';
+  return window.welloServiceDesk?.service_access_token || process.env.REACT_APP_SERVICE_ACCESS_TOKEN || 'AKCDR8dilnE7ISown6JvUY/2CiBNXbEMZuBJTUwAveQBViIrXSeZq/q97oxBrIhd3YYmYBfUW5rul8UDkwFcxFR/Ozj0hvbJLPNRAaT2FeOFtxlyvMKv9QkuTmgzX0atfkgi1Rgcsq+3KX27nNJNoQNuQwqUuTUOWm08U1ZGVlIs+hgxdXUHVxRxEWB9vWjFodYxc91ujzGlOw7I8NQvXw==';
 }
 
 function jsonHeaders(headers = {}) {
@@ -33,6 +35,7 @@ export function loginWithWelloServiceDesk(email, password) {
     },
     {
       headers: jsonHeaders(),
+      skipAuthRedirect: true, // a failed login must not trigger the global 401 sign-out (AuthContext)
     }
   );
 }

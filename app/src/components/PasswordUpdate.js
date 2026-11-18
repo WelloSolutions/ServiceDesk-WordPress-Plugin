@@ -1,5 +1,5 @@
 // src/pages/PasswordUpdate.js
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -28,7 +28,6 @@ const PasswordUpdate = () => {
   const navigate = useNavigate();
   const { auth, login, logout, updateAuthToken } = useAuth(); // Access the user's current auth info
   setPrimaryTheme(auth?.colorPrimary);
-  const [token, setToken] = useState('')
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
@@ -42,13 +41,6 @@ const PasswordUpdate = () => {
   const [successMessage, setSuccessMessage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const { t } = useTranslation('updatePassword');
-
-  useEffect(() => {
-    if (window.welloServiceDesk) {
-      const { token } = window.welloServiceDesk;
-      setToken(token)
-    }
-  }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -85,7 +77,8 @@ const PasswordUpdate = () => {
     try {
       setIsLoading(true);
       // Step 1: Login using provided credentials
-      const userData = await login(token, auth.authEmail, currentPassword);
+      // WordPress plugin: login uses the service access token from the plugin settings
+      const userData = await login(auth.authEmail, currentPassword);
 
       if (!userData || !userData.data || !userData.data.auth_token) {
         setCurrentPassword('');

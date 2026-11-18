@@ -1,0 +1,13 @@
+{
+  "filter_title": "Filtrer",
+  "filter_contains": "Contient",
+  "filter_equals": "Égal à",
+  "filter_starts_with": "Commence par",
+  "filter_before": "Avant",
+  "filter_after": "Après",
+  "filter_between": "Entre",
+  "filter_value_placeholder": "Filtrer...",
+  "filter_reset": "Réinitialiser",
+  "filter_apply": "Appliquer",
+  "filter_clear_all": "Effacer les filtres"
+}

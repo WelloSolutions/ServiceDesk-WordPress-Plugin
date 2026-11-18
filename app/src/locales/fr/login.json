@@ -1,4 +1,5 @@
 {
+  "login_form_domain": "Domaine",
   "login_form_button": "S'identifier",
   "login_form_email": "Saisir l'adresse électronique ici",
   "login_form_password": "Mot de passe",

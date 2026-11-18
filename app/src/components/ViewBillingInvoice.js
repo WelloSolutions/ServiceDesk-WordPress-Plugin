@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { API_BASE_URL } from "../config";
 import { usePagination, useRowSelect, useSortBy, useTable } from "react-table";
 import {
   ArrowDown,
@@ -249,9 +250,9 @@ function ReactTableBilling({ columns, data, onSelectionChange }) {
                           {column.render("Header")}
                           {column.canSort && column.isSorted ? (
                             column.isSortedDesc ? (
-                              <ArrowUp className="inline w-4 h-4 ml-1" />
-                            ) : (
                               <ArrowDown className="inline w-4 h-4 ml-1" />
+                            ) : (
+                              <ArrowUp className="inline w-4 h-4 ml-1" />
                             )
                           ) : (
                             ""
@@ -354,7 +355,7 @@ export default function ViewBillingInvoice() {
   setPrimaryTheme(auth?.colorPrimary);
 
   const [invoices, setInvoices] = useState([]);
-  const [activeTab, setActiveTab] = useState("orders");
+  const [activeTab, setActiveTab] = useState("invoices");
   const [year, setYear] = useState(uniqueYear[0]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -363,8 +364,7 @@ export default function ViewBillingInvoice() {
   const [downloadError, setDownloadError] = useState("");
 
   const apiBaseUrl = useMemo(() => {
-    const base = process.env.REACT_APP_API_URL || "https://testservicedeskapi.odysseemobile.com/";
-    return base.endsWith("/") ? base : `${base}/`;
+    return `${API_BASE_URL}/`;
   }, []);
 
   useEffect(() => {

@@ -1,19 +1,18 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { useTable, useSortBy, useExpanded, usePagination } from 'react-table';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../config';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import Calendar from 'react-calendar'
 import 'react-calendar/dist/Calendar.css'
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
 import {
-  XCircle, X, CornerDownRight, CircleCheckBig, Filter, FileText, Clock, File, Circle, Wrench, ArrowUp, ArrowDown,
-  MapPin, Text, Bold, BarChart, Hash, UploadCloud, ChevronDown, ChevronUp, Check, BadgeInfo, TicketX, Thermometer,
-  ArrowRightToLine, ArrowLeftToLine, ChevronsLeft, ChevronsRight, ArrowLeft, ArrowRight
+  XCircle, X, CircleCheckBig, FileText, Clock, File, Circle, Wrench,
+  MapPin, UploadCloud, ChevronDown, ChevronUp, Check, TicketX, Thermometer, Loader2
 } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
-import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
+import EquipmentTreeTable from './EquipmentTreeTable.js';
 
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
@@ -23,16 +22,11 @@ const CreateTicket = () => {
   const navigate = useNavigate();
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
-  const [contacts, setContacts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [startRow, setStartRow] = useState(0);
-  const [endRow, setEndRow] = useState(500);
-  const [isLoading, setIsLoading] = useState(false);
   const [submitLoading, setSubmitLoading] = useState(false);
-  const [subRowsMap, setSubRowsMap] = useState({});
-  const [renderedSubRows, setRenderedSubRows] = useState({});
   const [error, setError] = useState(null);
   const [selectedRow, setSelectedRow] = useState(null);
+  // id of the equipment whose details are being loaded after a click in the equipments table
+  const [selectingId, setSelectingId] = useState(null);
   const [step, setStep] = useState(0);
   const [ticketDetails, setTicketDetails] = useState({
     ticketType: '',
@@ -43,44 +37,11 @@ const CreateTicket = () => {
 
   const [ticketTypes, setTicketTypes] = useState([]);
   const [severities, setSeverities] = useState([]);
-  const [expanded, setExpanded] = useState({});
   const [isDragActive, setIsDragActive] = useState(false);
   const [typesLoaded, setTypesLoaded] = useState(false);
   const [severitiesLoaded, setSeveritiesLoaded] = useState(false);
   const [userLoaded, setUserLoaded] = useState(false);
 
-  const [isModalOpen, setIsModalOpen] = useState(false);
-
-  const [allLocations, setAllLocations] = useState([]);
-  const [locationHints, setLocationHints] = useState([]);
-
-  const EmptyGuid = "00000000-0000-0000-0000-000000000000";
-
-  const [filters, setFilters] = useState({
-    location: "",
-    locationLabel: "",
-    keyword: "",
-    brand: EmptyGuid,
-    model: EmptyGuid,
-    status: EmptyGuid,
-    includeArchived: false
-  });
-
-  const [tempFilters, setTempFilters] = useState(filters);
-  const filtersRef = useRef(filters);
-
-  useEffect(() => {
-    filtersRef.current = filters;
-  }, [filters]);
-
-  const [fetchBrands, setFetchBrands] = useState();
-  const [fetchModels, setFetchModels] = useState();
-  const [fetchStatuses, setFetchStatuses] = useState();
-  const [brandsLoaded, setBrandsLoaded] = useState(false);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
-  const [statusesLoaded, setStatusesLoaded] = useState(false);
-
-  const [includeArchived, setIncludeArchived] = useState(false);
 
   const [ticketName, setTicketName] = useState('');
   const [textarea, setTextarea] = useState('');
@@ -92,14 +53,14 @@ const CreateTicket = () => {
   const maxFileSize = 5 * 1024 * 1024;
 
   const [date, setDate] = React.useState(new Date());
-  // const [selectedTime, setSelectedTime] = useState(null);
+  //const [selectedTime, setSelectedTime] = useState(null);
   const [selectedTime, setSelectedTime] = useState(() => {
-      const now = new Date();
-  
-      return `${String(now.getHours()).padStart(2, "0")}:${String(
-        now.getMinutes()
-      ).padStart(2, "0")}`;
-    });
+    const now = new Date();
+
+    return `${String(now.getHours()).padStart(2, "0")}:${String(
+      now.getMinutes()
+    ).padStart(2, "0")}`;
+  });
   const [isOpen, setIsOpen] = useState(true);
   const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
   const [responseId, setResponseId] = useState();
@@ -107,7 +68,7 @@ const CreateTicket = () => {
   const { t, i18n } = useTranslation('createTicket');
   const locale = i18n?.language || 'en-GB'; // used for Calendar and toLocaleString
 
-  const baseUrl = process.env.REACT_APP_API_URL || "https://servicedeskapi.wello.solutions/";
+  const baseUrl = API_BASE_URL;
 
   const timeSlots = [
     '08:00', '08:30', '09:00', '09:30',
@@ -118,219 +79,12 @@ const CreateTicket = () => {
     '18:00'
   ];
 
-  const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null, currentFilters = null, skipLoading = false }, startRow = 0, endRow = 500) => {
-      const activeFilters = currentFilters || filtersRef.current;
-      const url = `api/ProjectView/Search?keyword=${activeFilters.keyword}&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${activeFilters.model}&equipmentBrandID=${activeFilters.brand}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${activeFilters.status}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
-
-      const payload = {
-        startRow: startRow,
-        endRow: endRow,
-        rowGroupCols: [],
-        valueCols: [],
-        pivotCols: [],
-        pivotMode: false,
-        groupKeys,
-        filterModel: {},
-        sortModel: []
-      };
-
-      try {
-        const response = await fetchDocuments(url, 'POST', auth.authKey, payload);
-        const data = Array.isArray(response) ? response : [];
-        const mapped = data.map(item => ({
-          ...item,
-          subRows: item.has_child ? [] : []
-        }));
-
-        if (parentOnly) {
-          setContacts(mapped);
-        }
-        if (!parentOnly && parentId) {
-          setSubRowsMap(prev => ({ ...prev, [parentId]: mapped }));
-        }
-        return mapped;
-      } catch (err) {
-        console.error(err);
-        setError(err);
-        return [];
-      } finally {
-        if (!skipLoading) {
-          setLoading(false);
-        }
-      }
-    },
-    [auth]
-  );
-
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
-        // Only load projects once on mount
-        const projects = await fetchProjects({ parentOnly: true, currentFilters: filtersRef.current }, startRow, endRow);
-
-        // Extract locations from projects
-        const locations = Array.isArray(projects)
-          ? [
-            ...new Map(
-              projects.map(p => {
-                const name = p.name ? `${p.name} -` : '';
-                const street = p.db_address_street || '';
-                const streetNumber = p.db_address_street_number || '';
-                const street2 = p.db_address_street2 || '';
-                const zip = p.db_address_zip || '';
-                const city = p.db_address_city || '';
-
-                const label = [name, street, streetNumber, street2, city, zip]
-                  .filter(Boolean)
-                  .join(' ');
-
-                return [p.id, { id: p.id, label }];
-              })
-            ).values(),
-          ]
-          : [];
-
-        setAllLocations(locations);
-      } catch (err) {
-        console.error('Failed to fetch locations', err);
-      }
-    };
-
-    loadInitialData();
-  }, [fetchProjects, startRow, endRow]);
-
-  const handleLocationChange = (e) => {
-    const value = e.target.value;
-    setTempFilters(prev => ({ ...prev, locationLabel: value }));
-
-    if (value.length >= 3) {
-      const filtered = allLocations.filter(loc =>
-        loc.label.toLowerCase().includes(value.toLowerCase())
-      );
-      setLocationHints(filtered);
-    } else {
-      setLocationHints([]);
-    }
-  };
-
-  const handleHintClick = (hint) => {
-    setTempFilters(prev => ({
-      ...prev,
-      location: hint.id,         // ✅ store ID
-      locationLabel: hint.label  // show label in input
-    }));
-    setLocationHints([]);
-  };
-
-
-  useEffect(() => {
-    const fetchBrands = async () => {
-      try {
-        const resbrands = await fetchDocuments('api/EquipmentBrand', 'GET', auth.authKey);
-        setFetchBrands(resbrands.value);
-        setBrandsLoaded(true);
-      } catch (err) {
-        setError(err);
-      }
-    };
-
-    const fetchModels = async () => {
-      try {
-        const resmodels = await fetchDocuments('api/EquipmentModel', 'GET', auth.authKey);
-        setFetchModels(resmodels.value);
-        setModelsLoaded(true);
-      } catch (err) {
-        setError(err);
-      }
-    };
-
-    const fetchStatuses = async () => {
-      try {
-        const restatuses = await fetchDocuments('api/ProjectStatus', 'GET', auth.authKey);
-        setFetchStatuses(restatuses.value);
-        setStatusesLoaded(true);
-      } catch (err) {
-        setError(err);
-      }
-    };
-
-    if (isModalOpen && !brandsLoaded) {
-      fetchBrands();
-    }
-    if (isModalOpen && !modelsLoaded) {
-      fetchModels();
-    }
-    if (isModalOpen && !statusesLoaded) {
-      fetchStatuses();
-    }
-  }, [auth, isModalOpen, brandsLoaded, modelsLoaded, statusesLoaded]);
-
-  const brandOptions = Array.isArray(fetchBrands)
-    ? fetchBrands
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(brand => ({
-        value: brand.id,
-        label: brand.name,
-      }))
-    : [];
-
-  const modelOptions = Array.isArray(fetchModels)
-    ? fetchModels
-      .filter(model =>
-        tempFilters.brand !== EmptyGuid
-          ? model.equipment_brand_id === tempFilters.brand
-          : true
-      )
-      .sort((a, b) => a.name.localeCompare(b.name))
-      .map(model => ({
-        value: model.id,
-        label: model.name,
-      }))
-    : [];
-
-  // Prepare options with default "All Brands"
-  const statusOptions = [
-    ...(Array.isArray(fetchStatuses)
-      ? fetchStatuses
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .map((status) => ({
-          value: status.id,
-          label: status.name,
-        }))
-      : []),
-  ];
-
   const steps = [
     { id: 0, label: t("create_ticket_page_step_1") },
     { id: 1, label: t("create_ticket_page_step_2") },
     { id: 2, label: t("create_ticket_page_step_3") },
     { id: 3, label: t("create_ticket_page_step_4") },
   ];
-
-  const statusColors = useMemo(() => ({
-    "In progress": "bg-yellow-200 text-yellow-800",
-    "Planned": "bg-blue-200 text-blue-800",
-    "To be Planned": "bg-purple-200 text-purple-800",
-    "Out of production": "bg-orange-200 text-orange-800",
-    "Active": "bg-green-200 text-green-800",
-    "Ready for Review": "bg-indigo-200 text-indigo-800",
-    "Proactive": "bg-indigo-200 text-indigo-800",
-    "Cancelled": "bg-red-200 text-red-800",
-    "Completed": "bg-pink-200 text-pink-800",
-  }), []);
-
-  const statusDotColors = useMemo(() => ({
-    "In progress": "bg-yellow-800 text-yellow-800",
-    "Planned": "bg-blue-800 text-blue-800",
-    "To be Planned": "bg-purple-800 text-purple-800",
-    "Out of production": "bg-orange-800 text-orange-800",
-    "Active": "bg-green-800 text-green-800",
-    "Ready for Review": "bg-indigo-800 text-indigo-800",
-    "Proactive": "bg-indigo-800 text-indigo-800",
-    "Cancelled": "bg-red-800 text-red-800",
-    "Completed": "bg-pink-800 text-pink-800",
-  }), []);
 
   const severityType = useMemo(() => ({
     "Not urgent": "text-blue-800 ",
@@ -393,95 +147,6 @@ const CreateTicket = () => {
       syncTicketFiles(updatedFiles);
       return updatedFiles;
     });
-  };
-
-  // useEffect(() => {
-  //   fetchProjects({ parentOnly: true }, startRow, endRow);
-  // }, [fetchProjects, startRow, endRow]);
-
-  const handleFetchChildren = useCallback(
-    async (parentId) => {
-      if (subRowsMap[parentId]) return;
-      fetchProjects({ parentOnly: false, groupKeys: [parentId], parentId }, startRow, endRow);
-    },
-    [fetchProjects, subRowsMap, startRow, endRow]
-  );
-
-
-  const toggleExpand = useCallback(async (id) => {
-    if (!expanded[id]) {
-      await handleFetchChildren(id);
-    }
-    setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
-  }, [expanded, handleFetchChildren]);
-
-
-  const clearedFilters = {
-    location: "",
-    keyword: "",
-    brand: EmptyGuid,
-    model: EmptyGuid,
-    status: EmptyGuid,
-    includeArchived: false,
-  };
-
-
-  const applyFilters = async () => {
-    const { brand, status, model, location, keyword } = tempFilters;
-    const isValid =
-      brand !== clearedFilters.brand ||
-      status !== clearedFilters.status ||
-      model !== clearedFilters.model ||
-      location.trim() !== "" ||
-      keyword.trim() !== "";
-
-    if (!isValid) return;
-
-    setIsLoading(true);
-    try {
-      const parentData = await fetchProjects({ parentOnly: true, currentFilters: tempFilters, skipLoading: true }, startRow, endRow) || [];
-      const filteredData = await fetchProjects({ parentOnly: false, currentFilters: tempFilters, skipLoading: true }, startRow, endRow) || [];
-
-      const mergedSubRowsMap = { ...subRowsMap };
-      filteredData.forEach(row => {
-        if (row.parentId) {
-          if (!mergedSubRowsMap[row.parentId]) mergedSubRowsMap[row.parentId] = [];
-          if (!mergedSubRowsMap[row.parentId].some(r => r.id === row.id)) {
-            mergedSubRowsMap[row.parentId].push(row);
-          }
-        } else {
-          if (!parentData.some(r => r.id === row.id)) {
-            parentData.push(row);
-          }
-        }
-      });
-
-      setContacts(parentData);
-      setSubRowsMap(mergedSubRowsMap);
-      setFilters(tempFilters);
-    } catch (err) {
-      console.error('Failed to apply filters:', err);
-      toast.error('Error applying filters');
-    } finally {
-      setIsModalOpen(false);
-      setIsLoading(false);
-    }
-  };
-
-  // Reset filters and reload default data
-  const handleReset = async () => {
-    setIsLoading(true);
-
-    try {
-      setTempFilters(clearedFilters);
-      await fetchProjects({ parentOnly: true, currentFilters: clearedFilters, skipLoading: true }, startRow, endRow);
-      setFilters(clearedFilters);
-    } catch (error) {
-      console.error("Reset failed:", error);
-    } finally {
-      setIsModalOpen(false);
-      setIsLoading(false);
-    }
   };
 
   const ticketTypeOptions = useMemo(() => ticketTypes.map((type) => ({
@@ -551,251 +216,22 @@ const CreateTicket = () => {
     setTicketName(e.target.value);
   };
 
-  const handleRowClick = (rowData) => {
-    setSelectedRow(rowData);
-    setStep(1);
-  };
-
-  const columns = useMemo(() => [
-    {
-      Header: t('create_ticket_table_heading_name_text'),
-      accessor: 'name'
-    },
-    {
-      id: 'expander',
-      Header: '',
-      disableSortBy: true,
-      Cell: ({ row }) => (
-        row.original.has_child ? (
-          <button
-            onClick={() => toggleExpand(row.original.id)}
-            className="pr-1"
-          >
-            {expanded[row.original.id] ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-          </button>
-        ) : null
-      )
-    },
-    {
-      Header: t('create_ticket_table_heading_address_text'), accessor: 'db_address_street',
-      Cell: ({ row }) => {
-        const isMobile = row.original.db_address_id === '00000000-0000-0000-0000-000000000000';
-        return isMobile
-          ? t('No address, it is mobile')
-          : `${row.original.db_address_street} - ${row.original.db_address_street_number} ${row.original.db_address_street2 || ''}`;
-      }
-    },
-    { Header: t('create_ticket_table_heading_type_text'), accessor: 'equipment_family_name' },
-    { Header: t('create_ticket_table_heading_reference_text'), accessor: 'customer_reference' },
-    { Header: t('create_ticket_table_heading_brand_text'), accessor: 'equipment_brand_name' },
-    { Header: t('create_ticket_table_heading_modal_text'), accessor: 'equipment_model_name' },
-    { Header: t('create_ticket_table_heading_serial_number_text'), accessor: 'serial_number' },
-    { Header: t('create_ticket_table_heading_bar_code_text'), accessor: 'barcode' },
-    {
-      Header: t('create_ticket_table_heading_status_text'),
-      accessor: 'project_status_name',
-      Cell: ({ row }) => (
-        <span className={`text-base min-w-max inline-flex items-center font-medium pe-3 px-2 pb-1 pt-0.5 rounded-full ${statusColors[row.original.project_status_name] || "bg-gray-200 text-gray-800"}`}>
-          <Circle className={`inline w-2 h-2 mr-1 rounded-full ${statusDotColors[row.original.project_status_name] || "bg-gray-800 text-gray-800"}`} />
-          {row.original.project_status_name}
-        </span>
-      ),
-    },
-  ], [statusColors, statusDotColors, expanded, toggleExpand, t]);
-
-
-  // Filtered data based on search criteria
-  const filteredContacts = useMemo(() => {
-    return contacts.filter(contact => {
-      const matchesLocation = filters.location
-        ? contact?.id === filters.location
-        : true;
-
-      const matchesKeyword = filters.keyword
-        ? Object.values(contact || {})
-          .filter(val => typeof val === 'string') // only check string fields
-          .some(val => val.toLowerCase().includes(filters.keyword.toLowerCase()))
-        : true;
-
-      const matchesBrand =
-        filters.brand !== EmptyGuid
-          ? contact.equipment_brand_id === filters.brand
-          : true;
-
-      const matchesModel =
-        filters.model !== EmptyGuid
-          ? contact.equipment_model_id === filters.model
-          : true;
-
-      const matchesStatus =
-        filters.status !== EmptyGuid
-          ? contact.project_status_id === filters.status
-          : true;
-
-      const matchesArchived = filters.includeArchived
-        ? true
-        : contact.project_status_is_closed !== true;
-
-      return (
-        matchesLocation &&
-        matchesKeyword &&
-        matchesBrand &&
-        matchesModel &&
-        matchesStatus &&
-        matchesArchived
-      );
-    });
-  }, [contacts, filters]);
-
-  // Flatten parent + child rows so filters can apply to all rows
-  const flattenedContacts = useMemo(() => {
-    const flat = [];
-    const addRows = (rows, depth = 0, parentId = null) => {
-      rows.forEach(r => {
-        flat.push({ ...r, depth, parentId });
-        if (subRowsMap[r.id] && subRowsMap[r.id].length > 0) {
-          addRows(subRowsMap[r.id], depth + 1, r.id);
-        }
-      });
-    };
-    addRows(contacts);
-    return flat;
-  }, [contacts, subRowsMap]);
-
-  const filtersActive = useMemo(() => {
-    return (
-      filters.location !== clearedFilters.location ||
-      filters.keyword !== clearedFilters.keyword ||
-      filters.brand !== clearedFilters.brand ||
-      filters.model !== clearedFilters.model ||
-      filters.status !== clearedFilters.status ||
-      filters.includeArchived !== clearedFilters.includeArchived
-    );
-  }, [filters, clearedFilters.location, clearedFilters.keyword, clearedFilters.brand, clearedFilters.model, clearedFilters.status, clearedFilters.includeArchived]);
-
-  const flatFilteredContacts = useMemo(() => {
-    if (!filtersActive) return [];
-
-    return flattenedContacts.filter(contact => {
-      const matchesLocation = filters.location
-        ? (contact?.id === filters.location || contact?.parentId === filters.location)
-        : true;
-
-      const matchesKeyword = filters.keyword
-        ? Object.values(contact || {})
-          .filter(val => typeof val === 'string') // only check string fields
-          .some(val => val.toLowerCase().includes(filters.keyword.toLowerCase()))
-        : true;
-
-      const matchesBrand =
-        filters.brand !== EmptyGuid
-          ? contact.equipment_brand_id === filters.brand
-          : true;
-
-      const matchesModel =
-        filters.model !== EmptyGuid
-          ? contact.equipment_model_id === filters.model
-          : true;
-
-      const matchesStatus =
-        filters.status !== EmptyGuid
-          ? contact.project_status_id === filters.status
-          : true;
-
-      const matchesArchived = filters.includeArchived
-        ? true
-        : contact.project_status_is_closed !== true;
-
-      return (
-        matchesLocation &&
-        matchesKeyword &&
-        matchesBrand &&
-        matchesModel &&
-        matchesStatus &&
-        matchesArchived
-      );
-    });
-  }, [flattenedContacts, filters, filtersActive]);
-
-  // Choose the data the table will use (flat when filters are active)
-  const displayedData = filtersActive ? flatFilteredContacts : filteredContacts;
-
-
-  // Create table instance with pagination
-  const {
-    getTableProps,
-    headerGroups,
-    page,
-    // rows,// fallback if needed, but pagination should use `page`
-    canPreviousPage,
-    canNextPage,
-    pageOptions,
-    gotoPage,
-    nextPage,
-    previousPage,
-    setPageSize,
-    state: { pageIndex, pageSize },
-  } = useTable(
-    {
-      columns,
-      data: displayedData,
-      initialState: { pageIndex: 0, pageSize: 12 },
-    },
-    useSortBy,
-    useExpanded,
-    usePagination
-  );
-
-  useEffect(() => {
-    Object.keys(expanded).forEach(id => {
-      if (expanded[id] && subRowsMap[id] && !renderedSubRows[id]) {
-        setRenderedSubRows(prev => ({ ...prev, [id]: true }));
-      }
-    });
-  }, [expanded, subRowsMap, renderedSubRows]);
-
-  const renderRows = (data, depth = 0) => {
-    return data.map(row => (
-      <React.Fragment key={row.id}>
-        <tr
-          className="cursor-pointer hover:bg-primary/50 hover:text-primary-foreground transition-colors duration-200 ease-in-out"
-          onClick={() => handleRowClick(row)}
-        >
-          {columns.map((column, index) => {
-            const isSecondColumn = index === 1; // Skip click for second column
-            const cellContent = column.Cell
-              ? column.Cell({ row: { original: row } })
-              : row[column.accessor];
-
-            return (
-              <td
-                key={column.id || column.accessor}
-                className={`px-2 py-4 whitespace-nowrap text-base font-normal ${index === 0 ? 'flex' : ''}`}
-                style={index === 0 ? { paddingLeft: `${depth * 2 + 1}em` } : {}}
-                onClick={isSecondColumn ? (e) => e.stopPropagation() : undefined}
-              >
-                {index === 0 && depth > 0 && (
-                  <CornerDownRight className="mr-1" size={20} />
-                )}
-                {cellContent}
-              </td>
-            );
-          })}
-        </tr>
-        {expanded[row.id] && subRowsMap[row.id] && (
-          <>
-            {renderRows(subRowsMap[row.id], depth + 1)}
-            {/* renderedSubRows is updated in useEffect when expanded rows are available */}
-          </>
-        )}
-        {expanded[row.id] && !renderedSubRows[row.id] && (
-          <div className="ml-2 space-y-2 p-2">
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-            <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
-          </div>
-        )}
-      </React.Fragment>
-    ));
+  // The equipments table returns the columns it shows; the ticket needs more (company_id, id2, db_address...):
+  // load the equipment like the equipment page does (api/ProjectView(id)).
+  const handleRowClick = async (row) => {
+    if (selectingId) return;
+    setSelectingId(row.id);
+    try {
+      const equipment = await fetchDocuments(`api/ProjectView(${row.id})`, 'GET', auth.authKey);
+      if (!equipment?.id) throw new Error('Equipment not found');
+      setSelectedRow(equipment);
+      setStep(1);
+    } catch (err) {
+      console.error('Failed to load the equipment', err);
+      toast.error(t('create_ticket_failed_load_equipment'));
+    } finally {
+      setSelectingId(null);
+    }
   };
 
   // if (loading) {
@@ -853,7 +289,6 @@ const CreateTicket = () => {
 
       if (response) {
         await postImage(response.id, response.id2);
-        setLoading(false);
         toast.success(t('create_ticket_created_successfully'));
         setIsSubmitModalOpen(true);
         setResponseId(response.id);
@@ -1018,321 +453,19 @@ const CreateTicket = () => {
         <ArrowLeft className="mr-2 w-5 h-5" /> {t("create_ticket_page_go_back")}
       </button> */}
 
-      {step === 0 && (
-        <>
-          <div className="flex items-center my-2">
-            <input
-              type="checkbox"
-              checked={includeArchived}
-              onChange={() => setIncludeArchived(!includeArchived)}
-              className="mr-2 w-4 h-4 cursor-pointer border border-primary rounded-md accent-primary"
-            />
-            <label className="text-zinc-800 text-base font-medium">{t('create_ticket_page_checkbox_label')}</label>
+      {/* Step 1: kept mounted (hidden) on the next steps, so going back keeps the filters, page and expanded rows */}
+      <div className={step === 0 ? '' : 'hidden'}>
+        <EquipmentTreeTable
+          title={t("create_ticket_step-1_title")}
+          helpText={t("create_ticket_step-1_helping_text")}
+          onRowClick={handleRowClick}
+        />
+        {selectingId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-20">
+            <Loader2 className="w-10 h-10 text-primary animate-spin" aria-label="Loading" />
           </div>
-          {/* Search Filter UI */}
-          <div className="mb-6">
-            <button onClick={() => setIsModalOpen(true)} className="flex justify-center items-center bg-primary-foreground text-primary text-base font-medium leading-normal border border-2 border-primary w-40 px-5 py-2 rounded-md mb-4 hover:bg-primary hover:text-primary-foreground">
-              {t('create_ticket_page_filter_button')} <Filter size={24} className="ml-4" />
-            </button>
-
-            {isModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
-                <div className="relative w-100 p-4 bg-white rounded-lg shadow-md border space-y-4">
-                  <X onClick={() => { setIsModalOpen(false); setTempFilters(clearedFilters) }} className="absolute -top-1 -right-1 bg-primary-foreground text-primary border border-2 border-primary px-2 rounded-full h-9 w-9 flex items-center justify-center hover:bg-primary hover:text-primary-foreground" />
-                  {/* Header */}
-                  <div className="flex items-center justify-between border-b pb-2">
-                    <div className="flex justify-center items-center bg-primary-foreground text-primary text-base font-medium leading-normal border border-2 border-primary w-48 px-4 py-2 rounded-md mb-2 hover:bg-primary hover:text-primary-foreground">
-                      {t('create_ticket_page_filter_label')}
-                      <Filter size={24} className="ml-4" />
-                    </div>
-                  </div>
-
-                  {/* Location */}
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-2.5 w-4 h-5 text-zinc-800" />
-                    <input
-                      name="location"
-                      id="location"
-                      type="text"
-                      value={tempFilters.locationLabel}
-                      onChange={handleLocationChange}
-                      placeholder={t("create_ticket_page_filter_location")}
-                      className="w-full pl-10 pr-3 py-2 border rounded-md text-gray-500 text-base font-normal focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-                  {locationHints.length > 0 && (
-                    <ul className="absolute z-10 bg-white border mt-1 rounded-md w-full shadow-md">
-                      {locationHints.map(hint => (
-                        <li
-                          key={hint.id}
-                          onClick={() => handleHintClick(hint)}
-                          className="px-4 py-2 hover:bg-gray-100 cursor-pointer text-base text-gray-700"
-                        >
-                          {hint.label}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {/* Sub-Location */}
-                  {/* <div className="relative">
-                        <MapPin className="absolute left-3 top-3.5 w-4 h-4 text-gray-500" />
-                        <input
-                          type="text"
-                          placeholder="Search by Sub-Location"
-                          className="w-full pl-10 pr-3 py-2 border rounded-md text-base focus:outline-none focus:ring-1 focus:ring-gray-400"
-                        />
-                      </div> */}
-
-                  {/* Keyword */}
-                  <div className="relative">
-                    <Text className="absolute left-3 top-2.5 w-4 h-5 text-zinc-800" />
-                    <input
-                      name='keyword'
-                      id='keyword'
-                      type="text"
-                      value={tempFilters.keyword}
-                      onChange={(e) => setTempFilters(prev => ({ ...prev, keyword: e.target.value }))}
-                      placeholder={t("create_ticket_page_filter_keyword")}
-                      className="w-full pl-10 pr-3 py-2 border rounded-md text-gray-500 text-base font-normal focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-
-                  {/* Brands */}
-                  <div className="relative">
-                    <Bold className="absolute left-3 top-2.5 w-4 h-5 text-zinc-800" />
-                    <Select
-                      components={animatedComponents}
-                      options={brandOptions}
-                      value={brandOptions.find(option => option.value === tempFilters.brand) || null} // match by ID
-                      onChange={(selected) => setTempFilters((prev) => ({ ...prev, brand: selected.value, }))}
-                      placeholder={t("create_ticket_page_filter_brands")}
-                      className="w-full pl-10 border rounded-md text-gray-500 text-base font-normal"
-                      classNamePrefix="react-select"
-                      styles={{
-                        control: (base) => ({
-                          ...base,
-                          border: 'none',
-                          boxShadow: 'none', // also remove focus ring
-                        }),
-                        option: (base, state) => ({
-                          ...base,
-                          whiteSpace: "nowrap", // prevent wrapping
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          color: state.isSelected
-                            ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                              : 'rgb(var(--color-primary) / var(--tw-bg-opacity, 1))',
-                          backgroundColor: state.isSelected
-                            ? 'rgb(var(--color-primary) / 0.7)'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary) / 0.5)'
-                              : 'transparent',
-                          cursor: 'pointer',
-                        }),
-                        menu: (provided) => ({
-                          ...provided,
-                          width: '85%', // controls dropdown menu width
-                        }),
-                      }}
-                    />
-                  </div>
-
-                  {/* Models */}
-                  <div className="relative">
-                    <Hash className="absolute left-3 top-2.5 w-4 h-5 text-zinc-800" />
-                    <Select
-                      components={animatedComponents}
-                      options={modelOptions}
-                      value={modelOptions.find(option => option.value === tempFilters.model) || null} // match by ID
-                      onChange={(selected) => setTempFilters((prev) => ({ ...prev, model: selected.value, }))}
-                      placeholder={t("create_ticket_page_filter_models")}
-                      className="w-full pl-10 border rounded-md text-gray-500 text-base font-normal"
-                      classNamePrefix="react-select"
-                      styles={{
-                        control: (base) => ({
-                          ...base,
-                          border: 'none',
-                          boxShadow: 'none', // also remove focus ring
-                        }),
-                        option: (base, state) => ({
-                          ...base,
-                          whiteSpace: "nowrap", // prevent wrapping
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          color: state.isSelected
-                            ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                              : 'rgb(var(--color-primary) / var(--tw-bg-opacity, 1))',
-                          backgroundColor: state.isSelected
-                            ? 'rgb(var(--color-primary) / 0.7)'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary) / 0.5)'
-                              : 'transparent',
-                          cursor: 'pointer',
-                        }),
-                        menu: (provided) => ({
-                          ...provided,
-                          width: '85%', // controls dropdown menu width
-                        }),
-                      }}
-                    />
-                  </div>
-
-                  {/* Status */}
-                  <div className="relative">
-                    <BarChart className="absolute left-3 top-2.5 w-4 h-5 text-zinc-800" />
-                    <Select
-                      components={animatedComponents}
-                      options={statusOptions}
-                      value={statusOptions.find(option => option.value === tempFilters.status) || null} // match by ID
-                      onChange={(selected) => setTempFilters((prev) => ({ ...prev, status: selected.value, }))}
-                      placeholder={t("create_ticket_page_filter_status")}
-                      className="w-full pl-10 border rounded-md text-gray-500 text-base font-normal"
-                      classNamePrefix="react-select"
-                      styles={{
-                        control: (base) => ({
-                          ...base,
-                          border: 'none',
-                          boxShadow: 'none', // also remove focus ring
-                        }),
-                        option: (base, state) => ({
-                          ...base,
-                          whiteSpace: "nowrap", // prevent wrapping
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          color: state.isSelected
-                            ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary-foreground) / var(--tw-bg-opacity, 1))'
-                              : 'rgb(var(--color-primary) / var(--tw-bg-opacity, 1))',
-                          backgroundColor: state.isSelected
-                            ? 'rgb(var(--color-primary) / 0.7)'
-                            : state.isFocused
-                              ? 'rgb(var(--color-primary) / 0.5)'
-                              : 'transparent',
-                          cursor: 'pointer',
-                        }),
-                        menu: (provided) => ({
-                          ...provided,
-                          width: '85%', // controls dropdown menu width
-                        }),
-                      }}
-                    />
-                  </div>
-
-                  {/* Footer buttons */}
-                  <div className="grid grid-cols-2 gap-4 justify-between pt-2">
-                    <button onClick={handleReset} disabled={isLoading} className="px-5 py-2 border border-2 border-primary rounded-md text-base text-primary hover:bg-primary/20 hover:text-primary">
-                      {t('create_ticket_page_filter_reset')}
-                    </button>
-                    <button onClick={applyFilters} disabled={isLoading} className="px-5 py-2 border border-2 border-primary bg-primary text-primary-foreground rounded-md text-base hover:bg-primary/20 hover:text-primary">
-                      {t('create_ticket_page_filter_confirm')}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md">
-            <h2 className="text-xl font-semibold mb-2 px-4 pt-4">{t("create_ticket_step-1_title")}</h2>
-
-            <div className="bg-blue-100 flex items-center text-blue-500 text-base font-normal px-4 py-1 mb-2 rounded-lg">
-              <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("create_ticket_step-1_helping_text")}
-            </div>
-            {/* Contacts Table */}
-            <div className="overflow-x-auto">
-              <table {...getTableProps()} className="min-w-full divide-y divide-gray-200 border border-gray-300">
-                <thead className="bg-white">
-                  {headerGroups.map((headerGroup, headerIndex) => (
-                    <tr key={(headerGroup.getHeaderGroupProps() || {}).key || headerIndex} {...(function () { const { key, ...r } = headerGroup.getHeaderGroupProps(); return r; })()} className="bg-white">
-                      {headerGroup.headers.map((column, index) => {
-                        const sortProps = column.canSort ? column.getSortByToggleProps() : {};
-                        const headerProps = column.getHeaderProps(sortProps);
-                        const { key, ...restHeaderProps } = headerProps;
-
-                        return (
-                          <th
-                            key={column.id || column.accessor}
-                            {...restHeaderProps}
-                            className={`px-2 py-3 text-left whitespace-nowrap text-slate-500 text-base font-medium leading-none ${index !== 0 ? 'border-r border-gray-300' : ''} ${column.canSort ? 'cursor-pointer select-none' : ''}`}
-                            aria-sort={column.isSorted ? (column.isSortedDesc ? 'descending' : 'ascending') : 'none'}
-                          >
-                            <div className="flex items-center">
-                              {column.render('Header')}
-                              {column.isSorted ? (
-                                column.isSortedDesc ? (
-                                  <ArrowUp className="inline w-4 h-4 ml-1" />
-                                ) : (
-                                  <ArrowDown className="inline w-4 h-4 ml-1" />
-                                )
-                              ) : null}
-                            </div>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {!isLoading && renderRows(page.map(r => r.original))}
-                </tbody>
-              </table>
-            </div>
-            {isLoading && (
-              <TableLoadingSkeleton rows={3} columns={6} />
-            )}
-            {loading && (
-              <TableLoadingSkeleton rows={5} columns={6} />
-            )}
-
-            {/* Pagination Controls - Only show if filteredTickets exceed pageSize (10) */}
-            {!isLoading && (filteredContacts?.length ?? 0) > 12 && (
-              <div className="flex items-center justify-between p-4">
-                <span className="text-base text-slate-700">
-                  {t("create_ticket_table_pagination_page")} {pageIndex + 1} {t("create_ticket_table_pagination_of")} {(pageOptions?.length ?? 0)}
-                </span>
-                <div>
-
-                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsLeft className="w-4" />
-                  </button>
-
-                  <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowLeftToLine className="w-4" />
-                  </button>
-                  <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowLeft className="w-4" />
-                  </button>
-                  <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRight className="w-4" />
-                  </button>
-                  <button onClick={() => gotoPage((pageOptions?.length ?? 1) - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRightToLine className="w-4" />
-                  </button>
-
-                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={(filteredContacts?.length ?? 0) <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsRight className="w-4" />
-                  </button>
-
-                </div>
-                <select name="table_pagination" id="table_pagination" value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
-                  {[12, 24, 36, 48].map(size => (
-                    <option key={size} value={size}>
-                      {t("create_ticket_table_pagination_show")} {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </>
-      )}
+        )}
+      </div>
 
       {step === 1 && (
         <div className="w-full max-w-3xl mx-auto">

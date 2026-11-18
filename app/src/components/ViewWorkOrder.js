@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { API_BASE_URL } from '../config';
 import { useParams } from 'react-router-dom';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { downloadFiles } from "../services/apiServiceDownloads";
@@ -30,6 +31,7 @@ const SingleWordOrder = () => {
   const [fileThumbnails, setFileThumbnails] = useState({});
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [downloadMsg, setDownloadMsg] = useState('');
+  const [downloading, setDownloading] = useState(null); // null | 'selected' | 'all'
   const { t } = useTranslation('singleWorkOrder');
 
   // Reset per-tab loaded flags when switching to a different work order
@@ -45,7 +47,7 @@ const SingleWordOrder = () => {
     setSelectedFiles([]);
   }, [workOrderId]);
 
-  const url = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions/';
+  const url = API_BASE_URL;
 
   const TableLoadingSkeleton = ({ rows = 5, columns = 6 }) => {
     return (
@@ -235,11 +237,20 @@ const SingleWordOrder = () => {
 
 
   const handleDownloadAll = async () => {
-    await downloadFiles(url, auth.authKey, doc.map(d => d.id));
-    setDownloadMsg("Downloading all files...");
+    if (downloading) return;
+    setDownloading('all');
+    try {
+      await downloadFiles(url, auth.authKey, doc.map(d => d.id));
+      setDownloadMsg("Downloading all files...");
+    } catch (err) {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const handleDownloadSelected = async () => {
+    if (downloading) return;
     const ids = selectedFiles.map(f => f.id);
 
     let fallbackName = "download.zip";
@@ -250,8 +261,15 @@ const SingleWordOrder = () => {
       }
     }
 
-    await downloadFiles(url, auth.authKey, ids, fallbackName);
-    setDownloadMsg("Downloading selected files...");
+    setDownloading('selected');
+    try {
+      await downloadFiles(url, auth.authKey, ids, fallbackName);
+      setDownloadMsg("Downloading selected files...");
+    } catch (err) {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const toggleFileSelection = (file) => {
@@ -578,7 +596,11 @@ const SingleWordOrder = () => {
                 </div>
               )
             }
-            {doc?.length > 0 ? (
+            {!docsLoaded ? (
+              <div className="flex items-center justify-center p-10" role="status" aria-live="polite">
+                <Loader className="w-10 h-10 text-primary animate-spin" />
+              </div>
+            ) : doc?.length > 0 ? (
               <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
                 {doc.map(item => (
                   <div key={item.id} className="p-2 flex flex-col border rounded-lg shadow-md">
@@ -660,18 +682,28 @@ const SingleWordOrder = () => {
             {!fileThumbnails && (!doc || doc.length === 0) && (
               <p className="text-gray-400 p-4 text-center">{t("single_work_order_page_no_document")}</p>
             )}
-            {doc.length > 0 && (
+            {docsLoaded && doc.length > 0 && (
               <div className='flex justify-end mt-4'>
                 {selectedFiles.length !== 0 && (
                   <button
                     onClick={handleDownloadSelected}
-                    className="w-48 px-4 py-2 bg-primary border border-2 border-primary rounded-lg flex items-center justify-center text-primary-foreground text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
-                    {t("single_work_order_page_download_button")} <Download className="ml-2 w-6 h-5" />
+                    disabled={!!downloading}
+                    aria-busy={downloading === 'selected'}
+                    className="w-48 px-4 py-2 bg-primary border border-2 border-primary rounded-lg flex items-center justify-center text-primary-foreground text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] disabled:opacity-60 disabled:cursor-not-allowed">
+                    {t("single_work_order_page_download_button")}{" "}
+                    {downloading === 'selected'
+                      ? <Loader className="ml-2 w-5 h-5 animate-spin" />
+                      : <Download className="ml-2 w-6 h-5" />}
                   </button>)}
                 <button
                   onClick={handleDownloadAll}
-                  className="w-48 px-4 py-2 ml-2 bg-primary-foreground border border-2 border-primary rounded-lg flex items-center justify-center text-primary text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
-                  {t("single_work_order_page_download_all_button")} <Download className="ml-2 w-6 h-5" />
+                  disabled={!!downloading}
+                  aria-busy={downloading === 'all'}
+                  className="w-48 px-4 py-2 ml-2 bg-primary-foreground border border-2 border-primary rounded-lg flex items-center justify-center text-primary text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] disabled:opacity-60 disabled:cursor-not-allowed">
+                  {t("single_work_order_page_download_all_button")}{" "}
+                  {downloading === 'all'
+                    ? <Loader className="ml-2 w-5 h-5 animate-spin" />
+                    : <Download className="ml-2 w-6 h-5" />}
                 </button>
               </div>
             )}

@@ -18,5 +18,6 @@
   "work_order_list_table_page_remarks_technicians_remarks": "Technicians Remarks",
   "work_order_list_table_pagination_page": "Page",
   "work_order_list_table_pagination_of": "of",
-  "work_order_list_table_pagination_show": "Show"
+  "work_order_list_table_pagination_show": "Show",
+  "work_order_list_no_results": "No work orders found."
 } 
