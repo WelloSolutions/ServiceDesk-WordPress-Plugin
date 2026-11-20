@@ -9,7 +9,7 @@ function apiUrl(path) {
 }
 
 function getServiceAccessToken() {
-  return window.welloServiceDesk?.service_access_token || process.env.REACT_APP_SERVICE_ACCESS_TOKEN || 'AKCDR8dilnE7ISown6JvUY/2CiBNXbEMZuBJTUwAveQBViIrXSeZq/q97oxBrIhd3YYmYBfUW5rul8UDkwFcxFR/Ozj0hvbJLPNRAaT2FeOFtxlyvMKv9QkuTmgzX0atfkgi1Rgcsq+3KX27nNJNoQNuQwqUuTUOWm08U1ZGVlIs+hgxdXUHVxRxEWB9vWjFodYxc91ujzGlOw7I8NQvXw==';
+  return window.welloServiceDesk?.service_access_token || process.env.REACT_APP_SERVICE_ACCESS_TOKEN || '';
 }
 
 function jsonHeaders(headers = {}) {
