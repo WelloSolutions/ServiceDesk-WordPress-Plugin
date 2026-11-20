@@ -1,55 +1,62 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { publicAsset } from '../config';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { useTranslation } from 'react-i18next';
 import { LogIn, Eye, EyeOff, Languages } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { setPrimaryTheme } from "../utils/setTheme";
+import en from '../locales/en/login.json';
+import fr from '../locales/fr/login.json';
+import nl from '../locales/nl/login.json';
 
 const Login = () => {
-  const [email, setEmail] = useState('')
-  // const [token, setToken] = useState('AKCDR8dilnE7ISown6JvUY/2CiBNXbEMZuBJTUwAveQBViIrXSeZq/q97oxBrIhd3YYmYBfUW5rul8UDkwFcxFR/Ozj0hvbJLPNRAaT2FeOFtxlyvMKv9QkuTmgzX0atfkgi1Rgcsq+3KX27nNJNoQNuQwqUuTUOWm08U1ZGVlIs+hgxdXUHVxRxEWB9vWjFodYxc91ujzGlOw7I8NQvXw==') //TEMPLATEFREETRIALAZURE
-  //const [token, setToken] = useState('vbhPhRFQXaXPSq1rv801N3DOP+WhR5sw7xmmuAsbjzAQFYGXypuX07Naz+3LcSQ0SuyjhMf5VnqqBtJ1fMISByvklKH9rjNUtKuwCxxMlMzlUVGzccJnRtvrGua+rn+foeUykkB9CoHkWoFfOQP84umQm2Go52GGvfUul6ibRVCb/cBaK4KgvtHRJI0JUUEY')
-  //const [token, setToken] = useState('H0llCbE/B0zmXa8uWKOqegUUL2zHLlomEP013H+eEKyh82Ag6c4KBdR5hkM1b2Liuq2athSackA0l6QOU9tt6+Eud5dIJUITNW1j7Sk80jflNQ92ereo4eI9mIH5EVHRug0AtrL68IoLjBblm8c6jMhxkHbRJhnj+omd2Q0EaHtjEYhRrTh7cHhnw0OFgt0u') // TESTNATIVE2
-  const [token, setToken] = useState('')
+  const [email, setEmail] = useState(() => localStorage.getItem('rememberedEmail') || '')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => !!localStorage.getItem('rememberedEmail'));
   const [selectedLang, setSelectedLang] = useState('en'); // Selected in <select>
   const navigate = useNavigate();
   const { login } = useAuth();
-  const [logo, setLogo] = useState('/service-desk/logo.png');
+  const [logo, setLogo] = useState(publicAsset('logo.png'));
 
   useEffect(() => {
     if (window.welloServiceDesk) {
-      const { logo_primary, token, color_primary } = window.welloServiceDesk;
+      const { logo_primary, color_primary } = window.welloServiceDesk;
       setLogo(logo_primary);
       setPrimaryTheme(color_primary);
-      setToken(token)
     }
+    // WordPress plugin: no domain field / ?domain= query string. The domain comes from the
+    // service access token set in the plugin settings (see AuthContext login).
   }, []);
+
+  // Available languages
+  const languages = useMemo(() => ({
+    en,
+    fr,
+    nl,
+  }), []);
 
   // State setup
   const [language, setLanguage] = useState('en');
-  const { t: i18nT, i18n } = useTranslation('login');
+  const [translations, setTranslations] = useState(en);
 
-  // On first load, load language from localStorage and sync with i18n
+  // On first load, load language from localStorage
   useEffect(() => {
-    const savedLang = localStorage.getItem('i18nextLng') || 'en';
+    const savedLang = localStorage.getItem('lang') || 'en';
     setLanguage(savedLang);
     setSelectedLang(savedLang);
-    i18n.changeLanguage(savedLang);
-  }, [i18n]);
+    setTranslations(languages[savedLang]);
+  }, [languages]);
 
-  // When language changes, update i18nextLng localStorage and sync with i18n
+  // When language changes, update localStorage and translations
   useEffect(() => {
-    localStorage.setItem('i18nextLng', language);
-    i18n.changeLanguage(language);
-  }, [language, i18n]);
+    localStorage.setItem('lang', language);
+    setTranslations(languages[language]);
+  }, [languages, language]);
 
-  // Translation function (use i18n translations)
-  const t = (key) => i18nT(key) || key;
+  // Translation function
+  const t = (key) => translations?.[key] || en[key] || key;
 
   // Language label map (static)
   const languageOptions = {
@@ -69,7 +76,7 @@ const Login = () => {
     }
 
     try {
-      const userData = await login(token, email, password);
+      const userData = await login(email, password, rememberMe);
 
       if (userData) {
         navigate("/");
@@ -121,7 +128,7 @@ const Login = () => {
                 autoComplete="email"
                 required
                 className="p-2 w-full border border-gray-300 rounded-md shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                value={localStorage.getItem('rememberedEmail') || email}
+                value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder={t('login_form_email')}
               />

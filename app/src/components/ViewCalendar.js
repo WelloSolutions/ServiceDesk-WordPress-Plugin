@@ -1,11 +1,12 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { APP_BASENAME } from '../config';
 import { useTable, useSortBy, useExpanded } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { useAuth } from '../AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { BadgeInfo, FileText, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, Filter } from 'lucide-react';
+import { BadgeInfo, FileText, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, Filter, Loader2, Link as LinkIcon } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 import { setPrimaryTheme } from "../utils/setTheme";
@@ -13,6 +14,20 @@ import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
 const animatedComponents = makeAnimated();
+
+const HINT_MIN_LENGTH = 3;
+const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
+
+const hintLabel = (h) => {
+  const name = h.name ? `${h.name} -` : '';
+  return [name, h.db_address_street, h.db_address_street_number, h.db_address_street2, h.db_address_city, h.db_address_zip]
+    .filter(Boolean)
+    .join(' ');
+};
+
+// a job matches a location when it is on the location itself or on any equipment under it (same as the Equipments filter)
+const matchesLocationFilter = (content, location) =>
+  !location || content.project_id === location || content.project_root_parent_id === location;
 
 const ViewCalendars = () => {
   const navigate = useNavigate();
@@ -37,8 +52,10 @@ const ViewCalendars = () => {
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  const [allLocations, setAllLocations] = useState([]);
   const [locationHints, setLocationHints] = useState([]);
+  const [hintsLoading, setHintsLoading] = useState(false);
+  const hintTimer = useRef(null);
+  const hintSeq = useRef(0);
 
   const [expandedRowId, setExpandedRowId] = useState(null);
   const [activeSection, setActiveSection] = useState(null); // 'popup' | 'remarks'
@@ -59,87 +76,43 @@ const ViewCalendars = () => {
 
   const [tempFilters, setTempFilters] = useState(filters);
 
-  const fetchProjects = useCallback(
-    async ({ parentOnly, groupKeys = [], parentId = null }) => {
-      const url = `api/ProjectView/Search?keyword=&projectReference=&projectReferenceBackOffice=&companyID=${EmptyGuid}&equipmentModelID=${EmptyGuid}&equipmentBrandID=${EmptyGuid}&equipmentFamilyID=${EmptyGuid}&projectStatusID=${EmptyGuid}&createdFrom=1980-01-01T00:00:00.000&createdTo=1980-01-01T00:00:00.000&includesClosed=false&parentOnly=${parentOnly}&contactId=${auth.userId}&rootParentId=${EmptyGuid}&includeLocation=true`;
-
-      const payload = {
-        startRow: 0,
-        endRow: 500,
-        rowGroupCols: [],
-        valueCols: [],
-        pivotCols: [],
-        pivotMode: false,
-        groupKeys,
-        filterModel: {},
-        sortModel: []
-      };
-
-      try {
-        const response = await fetchDocuments(url, 'POST', auth.authKey, payload);
-        const mapped = response.map(item => ({
-          ...item,
-          subRows: item.has_child ? [] : []
-        }));
-
-        return await mapped;
-      } catch (err) {
-        console.error(err);
-        setError(err);
-      } finally {
-        setLoading(false);
-      }
-    },
-    [auth]
-  );
-
-  useEffect(() => {
-    const loadLocations = async () => {
-      try {
-        const projects = await fetchProjects({ parentOnly: true });
-
-        const locations = Array.isArray(projects)
-          ? [
-            ...new Map(
-              projects.map(p => {
-                const name = p.name ? `${p.name} -` : '';
-                const street = p.db_address_street || '';
-                const streetNumber = p.db_address_street_number || '';
-                const street2 = p.db_address_street2 || '';
-                const zip = p.db_address_zip || '';
-                const city = p.db_address_city || '';
-
-                const label = [name, street, streetNumber, street2, city, zip]
-                  .filter(Boolean)
-                  .join(' ');
-
-                return [p.id, { id: p.id, label }];
-              })
-            ).values(),
-          ]
-          : [];
-
-        setAllLocations(locations); // locations: Array<{ id, label }>
-      } catch (err) {
-        console.error('Failed to fetch locations', err);
-      }
-    };
-
-    loadLocations();
-  }, [fetchProjects]);
-
+  // SD-514: location hints are searched on the server (api/ProjectView/LocationHints), same as Equipments / Create Ticket.
   const handleLocationChange = (e) => {
     const value = e.target.value;
-    setTempFilters(prev => ({ ...prev, locationLabel: value }));
+    // typing replaces the picked location: a location is only applied when a hint is picked
+    setTempFilters(prev => ({ ...prev, locationLabel: value, location: "" }));
 
-    if (value.length >= 3) {
-      const filteredHints = allLocations.filter(loc =>
-        loc.label.toLowerCase().includes(value.toLowerCase())
-      );
-      setLocationHints(filteredHints);
-    } else {
+    clearTimeout(hintTimer.current);
+    const seq = ++hintSeq.current;
+    if (value.trim().length < HINT_MIN_LENGTH) {
       setLocationHints([]);
+      setHintsLoading(false);
+      return;
     }
+    // the spinner shows from the first key press (debounce included) until the latest search answers
+    setHintsLoading(true);
+    hintTimer.current = setTimeout(async () => {
+      try {
+        const url = `api/ProjectView/LocationHints?keyword=${encodeURIComponent(value.trim())}&includeArchived=${!!tempFilters.includeArchived}`;
+        const res = await fetchDocuments(url, 'GET', auth.authKey);
+        if (seq === hintSeq.current) {
+          setLocationHints((Array.isArray(res) ? res : []).map(h => ({ id: h.id, label: hintLabel(h) })));
+        }
+      } catch (err) {
+        console.error('Failed to fetch locations', err);
+      } finally {
+        if (seq === hintSeq.current) setHintsLoading(false);
+      }
+    }, 300);
+  };
+
+  useEffect(() => () => clearTimeout(hintTimer.current), []);
+
+  const clearHints = () => {
+    hintSeq.current++;
+    clearTimeout(hintTimer.current);
+    setLocationHints([]);
+    setHintsLoading(false);
   };
 
   const handleHintClick = (hint) => {
@@ -148,7 +121,7 @@ const ViewCalendars = () => {
       locationLabel: hint.label, // Show label in input
       location: hint.id          // Store ID for filtering
     }));
-    setLocationHints([]);
+    clearHints();
   };
 
   const onDateChange = async (newDate) => {
@@ -258,11 +231,20 @@ const ViewCalendars = () => {
         accessor: 'icon', // Dummy accessor to satisfy react-table
         Cell: ({ row }) => {
           const showFileIcon = row.original.jobs_nb_notes > 0;
+          // Group work order: a root work order that has sub work orders (legacy jobs_chain icon)
+          const showGroupIcon = row.original.jobs_has_child === true &&
+            (!row.original.jobs_parent_id || row.original.jobs_parent_id === EMPTY_GUID);
 
-          if (!showFileIcon) return null;
+          if (!showFileIcon && !showGroupIcon) return null;
 
           return (
             <span className="flex gap-2 items-center">
+              {showGroupIcon && (
+                <LinkIcon
+                  className="w-5 h-5 cursor-pointer"
+                  onClick={() => window.open(`${window.location.origin}${APP_BASENAME}/workorder/${row.original.jobs_id}`, "_blank")}
+                />
+              )}
               {showFileIcon && (
                 <FileText
                   className="w-5 h-5 cursor-pointer"
@@ -319,9 +301,7 @@ const ViewCalendars = () => {
       const contentDateStr = new Date(content.date_from).toDateString();
       const matchesDate = contentDateStr === selectedDateStr;
 
-      const matchesLocation = filters.location
-        ? content.project_id === filters.location // Compare by ID
-        : true;
+      const matchesLocation = matchesLocationFilter(content, filters.location);
 
       const matchesEquipmentType =
         selectedEquipmentType && selectedEquipmentType !== 'All'
@@ -351,9 +331,7 @@ const ViewCalendars = () => {
       contents
         .filter(content => {
           // Filter by location if selected
-          const matchesLocation = filters.location
-            ? content.project_id === filters.location
-            : true;
+          const matchesLocation = matchesLocationFilter(content, filters.location);
 
           // Equipment type filter
           const matchesEquipmentType =
@@ -433,7 +411,7 @@ const ViewCalendars = () => {
       selectedEquipmentName: 'All',
     });
 
-    setLocationHints([]);
+    clearHints();
     setIncludeArchived(false);
   };
 
@@ -466,7 +444,7 @@ const ViewCalendars = () => {
               setSelectedEquipmentType(tempFilters.selectedEquipmentType || 'All');
               setSelectedEquipmentName(tempFilters.selectedEquipmentName || 'All');
               setIncludeArchived(tempFilters.includeArchived || false);
-              setLocationHints([]);
+              clearHints();
             }}
             className='space-y-4'
           >
@@ -479,12 +457,16 @@ const ViewCalendars = () => {
                 id="location"
                 type="text"
                 value={tempFilters.locationLabel}
+                autoComplete="off"
                 onChange={handleLocationChange}
                 placeholder={t('calendar_page_filter_location_placeholder')}
-                className="w-full px-2 py-2.5 text-base font-normal leading-normal border border-gray-300 rounded-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                className="w-full pl-2 pr-10 py-2.5 text-base font-normal leading-normal border border-gray-300 rounded-md focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
               />
+              {hintsLoading && (
+                <Loader2 className="absolute right-3 bottom-3 w-5 h-5 text-primary animate-spin" aria-label="Loading" />
+              )}
               {locationHints.length > 0 && (
-                <ul className="absolute z-10 bg-white border mt-1 rounded-md w-full shadow-md">
+                <ul className="absolute top-full z-10 bg-white border mt-1 rounded-md w-full shadow-md max-h-64 overflow-y-auto">
                   {locationHints.map(hint => (
                     <li
                       key={hint.id}
@@ -728,7 +710,7 @@ const ViewCalendars = () => {
                                   className={`self-stretch px-1 py-2 text-base font-normal ${index === 0 ? 'text-center' : 'cursor-pointer'
                                     }`}
                                   onClick={
-                                    index === 0 ? undefined : () => window.open(`${window.location.origin}/service-desk/workorder/${row.original.jobs_id}`, "_blank")
+                                    index === 0 ? undefined : () => window.open(`${window.location.origin}${APP_BASENAME}/workorder/${row.original.jobs_id}`, "_blank")
                                   }
                                 >
                                   {cell.render('Cell')}

@@ -71,5 +71,6 @@
   "create_ticket_table_heading_reference_text": "Référence client",
   "create_ticket_table_heading_serial_number_text": "Numéro de série",
   "create_ticket_table_heading_status_text": "Statut",
-  "create_ticket_table_heading_type_text": "Type"
+  "create_ticket_table_heading_type_text": "Type",
+  "create_ticket_failed_load_equipment": "Impossible de charger l'équipement. Veuillez réessayer."
 }

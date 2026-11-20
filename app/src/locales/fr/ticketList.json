@@ -15,5 +15,6 @@
   "tickets_list_table_heading_status_text": "Statut",
   "tickets_list_table_heading_type_text": "Type",
   "tickets_list_toggle_completed_tickets_text": "Tickets clôturés",
-  "tickets_list_toggle_open_tickets_text": "Tickets en cours"
+  "tickets_list_toggle_open_tickets_text": "Tickets en cours",
+  "tickets_list_no_results": "Aucun ticket trouvé."
 }

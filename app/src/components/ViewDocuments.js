@@ -1,33 +1,55 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { API_BASE_URL, appUrl } from '../config';
 import { useTable, useSortBy, usePagination } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments.js';
 import { downloadFiles } from "../services/apiServiceDownloads";
 import axios from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import {
   File, Eye, Download, BadgeInfo, ArrowUp, ArrowDown, ArrowLeft, ArrowLeftToLine, ArrowRight, ArrowRightToLine,
-  LayoutGrid, Table, Type, MapPin, Milestone, Building, Calendar, FileText, Wrench, Image, Loader, ChevronsLeft, ChevronsRight
+  LayoutGrid, Table, Type, MapPin, Milestone, Building, Calendar, FileText, Wrench, Image, Loader
 } from 'lucide-react';
 import { ToastContainer, toast } from 'react-toastify';
 import { useAuth } from '../AuthContext.js';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
-import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
+import { TableSkeletonRows } from '../utils/setTableSkleton.js';
 
 import Select from 'react-select';
 import makeAnimated from 'react-select/animated';
 const animatedComponents = makeAnimated();
 
-const url = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions/';
+const url = API_BASE_URL;
+
+// Documents are loaded with api/DbFileView/SearchPaged in blocks of BLOCK_SIZE rows, sorted by the API.
+// The blocks are cached per search (filters applied with "Search") + sort until the user leaves the screen or searches
+// again; the table and the grid show pages cut from the cached blocks.
+const PAGE_SIZES = [12, 24, 36, 48];
+
+// Table column widths (Select All, Object, Object Name, File Type, File Name, Upload When).
+// '1%' shrinks a column to its header text; the two wide columns split the rest of the table.
+const DOC_COLUMN_WIDTHS = ['1%', '1%', '50%', '1%', '50%', '1%'];
+const DOC_WIDE_COLUMNS = [2, 4];
+const BLOCK_SIZE = 144; // divisible by every page size, so a page always fits in one block
+// "Download All" keeps its previous behaviour: the first 500 files of the current filters
+const DOWNLOAD_ALL_MAX_FILES = 500;
+
+// Page of the object a file belongs to (object_kind is language independent)
+const OBJECT_PATHS = { jobs: 'workorder', task: 'ticket', you: 'ticket', project: 'equipment', location: 'equipment' };
+
+// Opens a page of this app in a new tab, keeping the opener so the session (sessionStorage) is copied
+const openAppPageInNewTab = (path) => window.open(`${window.location.origin}${appUrl(path)}`, '_blank');
 
 const ViewDocuments = () => {
   const navigate = useNavigate();
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
+  // Rows of the current page (table and grid)
   const [contacts, setContacts] = useState([]);
-  // const [loading, setLoading] = useState(true);
-  const [startRow, setStartRow] = useState(0);
-  const [endRow, setEndRow] = useState(500);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
+  // Search parameters applied with the "Search" button (null = nothing searched yet)
+  const [appliedSearch, setAppliedSearch] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [thumbnailLoading, setThumbnailLoading] = useState({});
   const [isURLLoading, setIsURLLoading] = useState(false);
@@ -55,32 +77,6 @@ const ViewDocuments = () => {
 
   const [downloadMsg, setDownloadMsg] = useState('');
   const { t } = useTranslation('documents');
-
-  const [gridPageIndex, setGridPageIndex] = useState(0);
-  const [gridPageSize, setGridPageSize] = useState(12);
-
-  const gridPageCount = Math.ceil(contacts.length / gridPageSize);
-  const gridPageOptions = Array.from({ length: gridPageCount }, (_, i) => i);
-
-  const gotoGridPage = (page) => {
-    setGridPageIndex(Math.max(0, Math.min(page, gridPageCount - 1)));
-  };
-
-  const previousGridPage = () => {
-    if (gridPageIndex > 0) setGridPageIndex(gridPageIndex - 1);
-  };
-
-  const nextGridPage = () => {
-    if (gridPageIndex < gridPageCount - 1) setGridPageIndex(gridPageIndex + 1);
-  };
-
-  const canGridPreviousPage = gridPageIndex > 0;
-  const canGridNextPage = gridPageIndex < gridPageCount - 1;
-
-  const paginatedContacts = contacts.slice(
-    gridPageIndex * gridPageSize,
-    gridPageIndex * gridPageSize + gridPageSize
-  );
 
   const fileTypesOptions = [
     { value: "documents", label: "Documents", extentions: ["DOC", "DOCX"] },
@@ -209,7 +205,9 @@ const ViewDocuments = () => {
 
   const handleLocationChange = (e) => {
     const value = e.target.value;
-    setTempFilters(prev => ({ ...prev, locationLabel: value }));
+    // Typing changes the text: the previously picked location no longer applies until a hint is picked again
+    // (clearing the field must also clear the location filter)
+    setTempFilters(prev => ({ ...prev, locationLabel: value, location: '' }));
 
     if (value.length >= 3) {
       const filtered = allLocations.filter(loc =>
@@ -231,71 +229,44 @@ const ViewDocuments = () => {
   };
 
 
-  const fetchDocumentsData = async (filters, startRow, endRow) => {
-    try {
-      const payload = {
-        keyword: keyword,
-        file_types: fileType.map((type) => type.value),
-        project_id: filters.location || EmptyGuid,
-        db_report_type_ids: [],
-        street: street || '',
-        city: city || '',
-        added_date: date.length ? date.map((d) => d.value) : date.value,
-        object_list: object.map((obj) => obj.value) || [
-          "company",
-          "task",
-          "jobs",
-          "project",
-          "you"
-        ],
-        file_extentions: fileType.reduce((acc, type) => acc.concat(type.extentions), []),
-        file_extentions_not_in: [],
-        date_add_min: `${date.length ? date.map((d) => d.value) : date.value}-01-01T00:00:00.000`,
-        date_add_max: `${date.length ? date.map((d) => d.value) : date.value}-12-31T23:59:59.000`,
-        query_object: {
-          startRow: startRow,
-          endRow: endRow,
-          rowGroupCols: [
-            {
-              id: "object_type",
-              displayName: "Object",
-              field: "object_type"
-            }
-          ],
-          valueCols: [],
-          pivotCols: [],
-          pivotMode: false,
-          groupKeys: object.map((obj) => obj.label) || [],
-          filterModel: {},
-          sortModel: []
-        }
-      };
-      const response = await fetchDocuments(`api/DbFileView/Search`, 'POST', auth.authKey, payload);
-      setContacts(response || []);
-    } catch (err) {
-      setError(err);
-      setIsLoading(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  // Search fields sent to the API (same fields as the previous api/DbFileView/Search call)
+  const buildSearchParams = (projectId) => {
+    const year = date.length ? date.map((d) => d.value) : date.value;
+    return {
+      keyword: keyword,
+      project_id: projectId || EmptyGuid,
+      db_report_type_ids: [],
+      street: street || '',
+      city: city || '',
+      object_list: object.map((obj) => obj.value),
+      file_extentions: fileType.reduce((acc, type) => acc.concat(type.extentions), []),
+      file_extentions_not_in: [],
+      date_add_min: `${year}-01-01T00:00:00.000`,
+      date_add_max: `${year}-12-31T23:59:59.000`,
+    };
+  };
 
+  // searchKey -> { total, blocks: Map<blockIndex, rows[]>, pending: Map<blockIndex, Promise> }
+  const cacheRef = useRef(new Map());
+  const requestSeq = useRef(0);
+  const searchSeq = useRef(0);
+  const loadedThumbnailIds = useRef(new Set());
+
+  // Thumbnails of the images of the current grid page only, loaded once per file
   useEffect(() => {
+    if (viewMode !== 'grid' || contacts.length === 0 || !auth?.authKey) return undefined;
+    let cancelled = false;
+
     const loadThumbnailsSequentially = async () => {
-      if (viewMode !== 'grid' || contacts.length === 0 || !auth?.authKey) {
-        return;
-      }
-
       for (const item of contacts) {
-        if (!item.id || !item.mime_type?.startsWith("image/")) continue;
+        if (cancelled) return; // the page changed: stop loading the previous page
+        if (!item.id || !item.mime_type?.startsWith("image/") || loadedThumbnailIds.current.has(item.id)) continue;
 
-        // Start loading
         setThumbnailLoading(prev => ({ ...prev, [item.id]: true }));
-
         try {
           const endpoint = `api/DbFileView/GetFileThumbnail/?id=${item.id}&maxWidth=${item.image_width || '500'}&maxHeight=${item.image_heigth || '500'}`;
           const response = await fetchDocuments(endpoint, "GET", auth.authKey, null, "image/png");
-
+          loadedThumbnailIds.current.add(item.id);
           setFileThumbnails(prev => ({
             ...prev,
             [item.id]: URL.createObjectURL(response),
@@ -303,34 +274,20 @@ const ViewDocuments = () => {
         } catch (err) {
           console.warn(`Failed to load thumbnail for ${item.id}:`, err);
         } finally {
-          // End loading regardless of success
           setThumbnailLoading(prev => ({ ...prev, [item.id]: false }));
         }
       }
-
     };
 
     loadThumbnailsSequentially();
+    return () => { cancelled = true; };
   }, [contacts, auth, viewMode]);
 
-  // Confirm button
+  // Search button: applies the filters; a new search always loads fresh data
   const handleSearch = () => {
-    // Sync UI state
     setFilters(tempFilters);
-
-    // Build filters object for API call
-    const filtersObj = {
-      keyword,
-      street,
-      city,
-      date,
-      fileType,
-      object,
-      location: tempFilters.location, // Pass selected location ID
-    };
-
-    setIsLoading(true);
-    fetchDocumentsData(filtersObj, startRow, endRow);
+    cacheRef.current = new Map();
+    setAppliedSearch({ ...buildSearchParams(tempFilters.location), searchId: ++searchSeq.current });
   };
 
   const openDocumentInNewTab = useCallback(async (id) => {
@@ -394,7 +351,7 @@ const ViewDocuments = () => {
         };
 
         return (
-          <div className='flex justify-around items-center'>
+          <div className='flex justify-around items-center gap-2'>
             <span>{t("documents_table_heading_select_all_text")}</span>
             <input
               className='w-4 h-4 rounded-sm'
@@ -430,36 +387,20 @@ const ViewDocuments = () => {
       Header: t('documents_table_heading_object_name_text'), accessor: 'object_name',
       Cell: ({ row }) =>
         row.original.object_name ? (
-          <Link
-            to={
-              (() => {
-                let path;
-                switch (row.original.object_type) {
-                  case 'Work Orders':
-                    path = `/workorder/${row.original.object_id}`;
-                    break;
-                  case 'Task':
-                    path = `/ticket/${row.original.object_id}`;
-                    break;
-                  case 'Uploaded By You':
-                    path = `/ticket/${row.original.object_id}`;
-                    break;
-                  case 'Equipment':
-                    path = `/equipment/${row.original.object_id}`;
-                    break;
-                  default:
-                    path = '#';
-                }
-                // prepend origin so new tab loads correctly
-                return `${window.location.origin}/service-desk${path}`;
-              })()
-            }
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-left"
-          >
-            {row.original.object_name}
-          </Link>
+          OBJECT_PATHS[row.original.object_kind] ? (
+            <a
+              href={appUrl(`/${OBJECT_PATHS[row.original.object_kind]}/${row.original.object_id}`)}
+              onClick={(e) => {
+                e.preventDefault();
+                openAppPageInNewTab(`/${OBJECT_PATHS[row.original.object_kind]}/${row.original.object_id}`);
+              }}
+              className="text-left"
+            >
+              {row.original.object_name}
+            </a>
+          ) : (
+            <span className="text-left">{row.original.object_name}</span>
+          )
         ) : null
     },
     {
@@ -506,7 +447,7 @@ const ViewDocuments = () => {
   };
 
   const handleDownloadAll = async () => {
-    const endpoint = `${url}api/DbFileView/downloadall/?token=${encodeURIComponent(auth.authKey)}`;
+    const endpoint = `${url}/api/DbFileView/downloadall/?token=${encodeURIComponent(auth.authKey)}`;
     //const selectedIds = contacts.map(file => file.id);
 
     const payload = {
@@ -529,8 +470,8 @@ const ViewDocuments = () => {
       date_add_min: `${date.length ? date.map((d) => d.value) : date.value}-01-01T00:00:00.000`,
       date_add_max: `${date.length ? date.map((d) => d.value) : date.value}-12-31T23:59:59.000`,
       query_object: {
-        startRow: startRow || 0,
-        endRow: endRow || 500,
+        startRow: 0,
+        endRow: DOWNLOAD_ALL_MAX_FILES,
         rowGroupCols: [
           {
             id: "object_type",
@@ -602,7 +543,11 @@ const ViewDocuments = () => {
     setTempFilters({ location: "", locationLabel: "" }); // <-- Reset locationLabel too
     setFilters({ location: "", locationLabel: "" });     // <-- Reset locationLabel too
     setLocationHints([]);                                // <-- Clear locationHints
+    setAppliedSearch(null);
+    cacheRef.current = new Map();
+    loadedThumbnailIds.current = new Set();
     setContacts([]);
+    setTotal(0);
     setFileThumbnails({});
     setError(null);
   };
@@ -615,21 +560,116 @@ const ViewDocuments = () => {
     prepareRow,
     canPreviousPage,
     canNextPage,
-    pageOptions,
     gotoPage,
     nextPage,
     previousPage,
     setPageSize,
-    state: { pageIndex, pageSize },
+    state: { pageIndex, pageSize, sortBy },
   } = useTable(
     {
       columns,
       data: contacts,
-      initialState: { pageIndex: 0, pageSize: 12, sortBy: [{ id: 'object_type', desc: false }] },
+      manualPagination: true,
+      manualSortBy: true,
+      pageCount,
+      autoResetPage: false,
+      autoResetSortBy: false,
+      disableMultiSort: true,
+      initialState: { pageIndex: 0, pageSize: PAGE_SIZES[0], sortBy: [{ id: 'object_type', desc: false }] },
     },
     useSortBy,
     usePagination
   );
+
+  // Search + sort: when it changes the list restarts at the first page
+  const queryKey = `${JSON.stringify(appliedSearch)}|${JSON.stringify(sortBy)}`;
+  const prevQueryKey = useRef(queryKey);
+  const authKey = auth?.authKey;
+
+  useEffect(() => {
+    if (prevQueryKey.current !== queryKey) {
+      prevQueryKey.current = queryKey;
+      if (pageIndex !== 0) {
+        gotoPage(0); // the effect runs again for page 0
+        return;
+      }
+    }
+
+    const seq = ++requestSeq.current;
+    if (!appliedSearch) {
+      setContacts([]);
+      setTotal(0);
+      setPageCount(1);
+      setIsLoading(false);
+      return;
+    }
+
+    const sort = sortBy[0];
+    let entry = cacheRef.current.get(queryKey);
+    if (!entry) {
+      entry = { total: null, blocks: new Map(), pending: new Map() };
+      cacheRef.current.set(queryKey, entry);
+    }
+
+    // Loads one block of BLOCK_SIZE rows once; concurrent calls share the same request
+    const loadBlock = (blockIndex) => {
+      if (entry.blocks.has(blockIndex)) return Promise.resolve();
+      if (entry.pending.has(blockIndex)) return entry.pending.get(blockIndex);
+
+      const { searchId, ...searchParams } = appliedSearch;
+      const payload = {
+        ...searchParams,
+        page: blockIndex,
+        pageSize: BLOCK_SIZE,
+        sortBy: sort ? sort.id : null,
+        sortDesc: sort ? !!sort.desc : false,
+      };
+      const request = fetchDocuments('api/DbFileView/SearchPaged', 'POST', authKey, payload)
+        .then(response => {
+          entry.total = response?.total ?? 0;
+          entry.blocks.set(blockIndex, response?.items ?? []);
+        })
+        .finally(() => entry.pending.delete(blockIndex));
+      entry.pending.set(blockIndex, request);
+      return request;
+    };
+
+    const firstRow = pageIndex * pageSize;
+    const blockIndex = Math.floor(firstRow / BLOCK_SIZE); // a page never spans two blocks (BLOCK_SIZE % pageSize === 0)
+    const offset = firstRow % BLOCK_SIZE;
+
+    const show = () => {
+      const rows = entry.blocks.get(blockIndex) ?? [];
+      setContacts(rows.slice(offset, offset + pageSize));
+      setTotal(entry.total);
+      setPageCount(Math.max(1, Math.ceil(entry.total / pageSize)));
+      setError(null);
+      setIsLoading(false);
+
+      // On the last page of a block, load the next block in the background
+      const nextBlockStart = (blockIndex + 1) * BLOCK_SIZE;
+      if (offset + pageSize >= BLOCK_SIZE && nextBlockStart < entry.total) {
+        loadBlock(blockIndex + 1).catch(() => { }); // retried when the page is opened
+      }
+    };
+
+    if (entry.blocks.has(blockIndex)) {
+      show();
+      return;
+    }
+
+    setIsLoading(true);
+    loadBlock(blockIndex)
+      .then(() => {
+        if (seq === requestSeq.current) show(); // ignore if the user moved on meanwhile
+      })
+      .catch(err => {
+        if (seq === requestSeq.current) {
+          setError(err);
+          setIsLoading(false);
+        }
+      });
+  }, [queryKey, pageIndex, pageSize, appliedSearch, sortBy, gotoPage, authKey]);
 
   // if (loading) {
   //   return <div className="flex w-full items-center justify-center h-screen">
@@ -930,7 +970,12 @@ const ViewDocuments = () => {
               <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("documents_page_helping_text")}
             </div>
             <div className="overflow-x-hidden">
-              <table {...getTableProps()} className="min-w-full divide-y divide-gray-200 border border-gray-300">
+              <table {...getTableProps()} className="w-full divide-y divide-gray-200 border border-gray-300">
+                {/* Short columns shrink to their (translated) header text; Object Name and File Name
+                    share the remaining space equally and wrap their content instead of stretching */}
+                <colgroup>
+                  {DOC_COLUMN_WIDTHS.map((width, i) => <col key={i} style={{ width }} />)}
+                </colgroup>
                 <thead className="bg-white">
                   {headerGroups.map((headerGroup, hgIdx) => {
                     const headerGroupProps = headerGroup.getHeaderGroupProps();
@@ -977,7 +1022,7 @@ const ViewDocuments = () => {
                               <td
                                 key={cellKey || cellIdx}
                                 {...restCellProps}
-                                className={`self-stretch px-1 py-2 text-base font-normal ${cellIdx === 0 ? 'text-center' : ''}`}
+                                className={`self-stretch px-2 py-2 text-base font-normal align-middle ${DOC_WIDE_COLUMNS.includes(cellIdx) ? '[overflow-wrap:anywhere]' : 'whitespace-nowrap'} ${cellIdx === 0 ? 'text-center' : ''}`}
                               >
                                 {cell.render('Cell')}
                               </td>
@@ -987,61 +1032,39 @@ const ViewDocuments = () => {
                       )
                     );
                   })}
+                  {/* Loading skeleton drawn inside the real table, so the bars line up with the columns.
+                      Same row count as the page being replaced so the table height doesn't jump (5 rows on the first load). */}
+                  {isLoading && (
+                    <TableSkeletonRows rows={page.length} columns={DOC_COLUMN_WIDTHS.length} wideColumns={DOC_WIDE_COLUMNS} checkboxColumn={0} />
+                  )}
+                  {appliedSearch && !isLoading && contacts.length === 0 && (
+                    <tr>
+                      <td colSpan={columns.length} className="px-2 py-6 text-center text-base text-gray-600">
+                        {t("documents_table_no_document_available")}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
-            {isLoading && (
-              <TableLoadingSkeleton rows={5} columns={6} />
-            )}
-            {/* Pagination Controls */}
-            {!isLoading && contacts.length > 12 && (
-              <div className="flex items-center justify-between p-2">
-                <span className="text-base text-primary">
-                  {t("documents_table_pagination_page")} {pageIndex + 1} {t("documents_table_pagination_of")} {pageOptions.length}
-                </span>
-                <div>
-                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsLeft className="w-4" />
-                  </button>
-                  <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary  disabled:opacity-50">
-                    <ArrowLeftToLine className="w-4" />
-                  </button>
-                  <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowLeft className="w-4" />
-                  </button>
-                  <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRight className="w-4" />
-                  </button>
-                  <button onClick={() => gotoPage(pageOptions.length - 1)} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRightToLine className="w-4" />
-                  </button>
-                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={contacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsRight className="w-4" />
-                  </button>
-                </div>
-                <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-primary border border-primary rounded-md max-w-32">
-                  {[12, 24, 36, 48].map(size => (
-                    <option key={size} value={size}>
-                      {t("documents_table_pagination_show")} {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
           </>
         )}
 
         {viewMode === 'grid' && (
           <>
+            <div className="relative min-h-[16rem]" aria-busy={isLoading}>
+            {/* Loading overlay: keeps the current cards in place (no scroll jump) while the next page loads;
+                the spinner is sticky so it stays visible even when scrolled down to the pagination */}
             {isLoading && (
-              <div className="ml-2 space-y-2 p-2">
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-64"></div>
-                <div className="h-6 bg-gray-200 rounded animate-pulse w-40"></div>
+              <div className="absolute inset-0 z-20 bg-white/70 rounded-lg">
+                <div className="sticky top-[40vh] flex flex-col items-center py-8">
+                  <Loader className="w-12 h-12 text-primary animate-spin" />
+                </div>
               </div>
             )}
             <div className='grid grid-cols-1 md:grid-cols-4 gap-4 p-8'>
-              {paginatedContacts?.length > 0 ? (
-                paginatedContacts.map(item => (
+              {contacts?.length > 0 ? (
+                contacts.map(item => (
                   <div key={item.id} className="p-2 flex flex-col border rounded-lg shadow-md">
                     {/* Show image thumbnail if it's an image, otherwise show file icon */}
                     {item.mime_type?.startsWith("image/") ? (
@@ -1107,54 +1130,45 @@ const ViewDocuments = () => {
                     )}
                   </div>
                 ))
-              ) : (
+              ) : !isLoading ? (
                 <p className="text-gray-600 p-4 text-center">
                   {t("documents_table_no_document_available")}
                 </p>
-              )}
+              ) : null}
 
-              {!fileThumbnails && (!paginatedContacts || paginatedContacts.length === 0) && (
-                <p className="text-gray-600 p-4 text-center">
-                  {t("documents_table_no_document_available")}
-                </p>
-              )}
             </div>
-
-            {contacts.length > 12 && (
-              <div className="flex items-center justify-between p-2">
-                <span className="text-base text-primary">
-                  {t("documents_table_pagination_page")} {gridPageIndex + 1} {t("documents_table_pagination_of")} {gridPageOptions.length}
-                </span>
-                <div>
-                  <button onClick={() => { setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev)); }} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsLeft className="w-4" />
-                  </button>
-                  <button onClick={() => gotoGridPage(0)} disabled={!canGridPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowLeftToLine className="w-4" />
-                  </button>
-                  <button onClick={() => previousGridPage()} disabled={!canGridPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowLeft className="w-4" />
-                  </button>
-                  <button onClick={() => nextGridPage()} disabled={!canGridNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRight className="w-4" />
-                  </button>
-                  <button onClick={() => gotoGridPage(gridPageOptions.length - 1)} disabled={!canGridNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
-                    <ArrowRightToLine className="w-4" />
-                  </button>
-                  <button onClick={() => { setStartRow(prev => prev + 500); setEndRow(prev => prev + 500) }} disabled={contacts.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                    <ChevronsRight className="w-4" />
-                  </button>
-                </div>
-                <select value={gridPageSize} onChange={e => setGridPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-primary border border-primary rounded-md max-w-32">
-                  {[12, 24, 36, 48].map(size => (
-                    <option key={size} value={size}>
-                      {t("documents_table_pagination_show")} {size}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            </div>
           </>
+        )}
+
+        {/* Pagination, shared by the table and the grid */}
+        {total > 0 && (
+          <div className="flex items-center justify-between p-2">
+            <span className="text-base text-primary">
+              {t("documents_table_pagination_page")} {pageIndex + 1} {t("documents_table_pagination_of")} {pageCount}
+            </span>
+            <div>
+              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowLeftToLine className="w-4" />
+              </button>
+              <button onClick={() => previousPage()} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowLeft className="w-4" />
+              </button>
+              <button onClick={() => nextPage()} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowRight className="w-4" />
+              </button>
+              <button onClick={() => gotoPage(pageCount - 1)} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+                <ArrowRightToLine className="w-4" />
+              </button>
+            </div>
+            <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-primary border border-primary rounded-md max-w-32">
+              {PAGE_SIZES.map(size => (
+                <option key={size} value={size}>
+                  {t("documents_table_pagination_show")} {size}
+                </option>
+              ))}
+            </select>
+          </div>
         )}
       </div>
     </div >

@@ -1,7 +1,8 @@
 import axios from "axios";
+import { readStoredAuth } from "../AuthContext";
+import { API_BASE_URL } from "../config";
 
-const WELLO_API_URL =
-  process.env.REACT_APP_WELLO_API_URL || "https://servicedeskapi.wello.solutions";
+const WELLO_API_URL = API_BASE_URL;
 
 /**
  * Generic API request utility for Wello API
@@ -17,7 +18,7 @@ const WELLO_API_URL =
 export const fetchDocuments = async (
   endpoint,
   method = "GET",
-  authKey = JSON.parse(localStorage.getItem("auth"))?.authKey,
+  authKey = readStoredAuth()?.authKey,
   data = null,
   accept = "application/json",
   contentType

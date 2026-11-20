@@ -23,5 +23,8 @@
   "equipments_list_table_heading_status_text": "Status",
   "equipments_list_table_pagination_page": "Page",
   "equipments_list_table_pagination_of": "of",
-  "equipments_list_table_pagination_show": "Show"
+  "equipments_list_table_pagination_show": "Show",
+  "equipments_list_no_results": "No equipment found.",
+  "equipments_list_show_more": "Show more ({{count}} remaining)",
+  "equipments_list_branch_context": "Does not match the filters: shown because an equipment below it does."
 }

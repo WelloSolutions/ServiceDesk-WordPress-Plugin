@@ -18,5 +18,6 @@
   "work_order_list_table_page_remarks_ref": "Ref",  
   "work_order_list_table_page_remarks_technician": "Technicien",
   "work_order_list_table_page_remarks_date": "Date",
-  "work_order_list_table_page_remarks_technicians_remarks": "Remarques du technicien"
+  "work_order_list_table_page_remarks_technicians_remarks": "Remarques du technicien",
+  "work_order_list_no_results": "Aucun bon de travail trouvé."
 }

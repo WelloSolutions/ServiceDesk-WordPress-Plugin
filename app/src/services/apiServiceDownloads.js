@@ -21,7 +21,7 @@ export const downloadFiles = async (
     return;
   }
 
-  const endpoint = `${baseUrl}api/DbFileView/download/?token=${encodeURIComponent(authKey)}`;
+  const endpoint = `${baseUrl.replace(/\/+$/, "")}/api/DbFileView/download/?token=${encodeURIComponent(authKey)}`;
 
   // API requires format: ['id1', 'id2']
   const paraString = `[${ids.map((id) => `'${id}'`).join(", ")}]`;

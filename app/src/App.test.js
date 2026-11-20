@@ -5,6 +5,9 @@ jest.mock('axios', () => ({
   get: jest.fn(),
   post: jest.fn(),
   put: jest.fn(),
+  interceptors: {
+    response: { use: jest.fn(() => 0), eject: jest.fn() },
+  },
 }));
 
 beforeEach(() => {

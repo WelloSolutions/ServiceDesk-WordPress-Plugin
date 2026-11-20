@@ -1,6 +1,8 @@
 import axios from 'axios';
 
-const WELLO_API_URL = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions';
+import { API_BASE_URL } from '../config';
+
+const WELLO_API_URL = API_BASE_URL;
 
 function apiUrl(path) {
   return `${WELLO_API_URL.replace(/\/$/, '')}${path}`;
@@ -33,6 +35,7 @@ export function loginWithWelloServiceDesk(email, password) {
     },
     {
       headers: jsonHeaders(),
+      skipAuthRedirect: true, // a failed login must not trigger the global 401 sign-out (AuthContext)
     }
   );
 }

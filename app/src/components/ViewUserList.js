@@ -1,11 +1,12 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useTable, usePagination } from 'react-table';
-import{ fetchDocuments } from '../services/apiServiceDocuments';
+import { fetchDocuments } from '../services/apiServiceDocuments';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, Lock } from 'lucide-react';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
 
 const ViewUserList = () => {
   const navigate = useNavigate();
@@ -80,15 +81,6 @@ const ViewUserList = () => {
     usePagination
   );
 
-  if (loading) {
-    return <div className="flex w-full items-center justify-center h-screen">
-      <div className="relative">
-        <div className="w-20 h-20 border-purple-200 border-2 rounded-full"></div>
-        <div className="w-20 h-20 border-purple-700 border-t-2 animate-spin rounded-full absolute left-0 top-0"></div>
-      </div>
-    </div>;
-  }
-
   if (error) {
     return <div className="text-center mt-10 text-red-600">Error fetching users: {error.message}</div>;
   }
@@ -139,8 +131,8 @@ const ViewUserList = () => {
                 prepareRow(row);
                 const { key: rowKey, ...restRowProps } = row.getRowProps();
                 return (
-                  <tr key={rowKey || row.original.id} {...restRowProps} 
-                  className="hover:bg-primary/50 hover:text-primary-foreground transition-colors duration-200 ease-in-out">
+                  <tr key={rowKey || row.original.id} {...restRowProps}
+                    className="hover:bg-primary/50 hover:text-primary-foreground transition-colors duration-200 ease-in-out">
                     {row.cells.map((cell, cellIdx) => {
                       const cellProps = cell.getCellProps();
                       const { key: cellKey, ...restCellProps } = cellProps;
@@ -153,9 +145,13 @@ const ViewUserList = () => {
                   </tr>
                 );
               })}
-            </tbody> 
+            </tbody>
           </table>
         </div>
+
+        {loading && (
+          <TableLoadingSkeleton rows={6} columns={6} />
+        )}
 
         {/* Show pagination controls only if there are more than 10 records */}
         {contacts.length > 12 && (

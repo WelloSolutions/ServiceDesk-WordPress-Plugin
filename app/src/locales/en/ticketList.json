@@ -15,5 +15,6 @@
   "tickets_list_status_label_open": "Open",
   "ticket_list_table_pagination_page": "Page",
   "ticket_list_table_pagination_of": "of",
-  "ticket_list_table_pagination_show": "Show"
+  "ticket_list_table_pagination_show": "Show",
+  "tickets_list_no_results": "No tickets found."
 } 

@@ -24,5 +24,8 @@
   "equipments_list_table_heading_type_text": "Type",
   "equipments_list_table_pagination_of": "de",
   "equipments_list_table_pagination_page": "Page",
-  "equipments_list_table_pagination_show": "Montrer"
+  "equipments_list_table_pagination_show": "Montrer",
+  "equipments_list_no_results": "Aucun équipement trouvé.",
+  "equipments_list_show_more": "Afficher plus ({{count}} restants)",
+  "equipments_list_branch_context": "Ne correspond pas aux filtres : affiché car un équipement en dessous y correspond."
 }

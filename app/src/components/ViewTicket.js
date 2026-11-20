@@ -1,4 +1,5 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { API_BASE_URL, appUrl } from '../config';
 import { useParams } from 'react-router-dom';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { downloadFiles } from "../services/apiServiceDownloads";
@@ -8,6 +9,16 @@ import { useAuth } from '../AuthContext';
 import { File, Eye, ArrowLeft, Circle, MapPin, Phone, Wrench, User, Calendar, ExternalLink, Image, Loader, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
+
+// db_table.id values used to find the work order linked to a ticket
+const DB_TABLE_ID_JOBS = '8fbbd742-a3b1-439a-898a-16541ad8e7ef';   // task.to_db_table_id: ticket attached to a work order
+const DB_TABLE_ID_TICKET = '448260E5-7A17-4381-A254-0B1D8FE53947'; // jobs.source_db_table_id: work order created from a ticket
+const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
+
+// Opens a page of this app in a new tab. Must keep the opener (no "noopener"/"noreferrer"): the browser
+// only copies sessionStorage - where the session lives without "Remember me" - to a tab opened this way,
+// otherwise the new tab has no session and shows the login page. Same as the list screens.
+const openAppPageInNewTab = (path) => window.open(`${window.location.origin}${appUrl(path)}`, '_blank');
 
 const SingleTicket = () => {
   const navigate = useNavigate();
@@ -23,8 +34,13 @@ const SingleTicket = () => {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('details'); // State to manage active tab
   const [fileThumbnails, setFileThumbnails] = useState({});
+  // false from the moment the Documents tab is opened until its document list has been fetched
+  const [docsReady, setDocsReady] = useState(false);
+  // true once a NON-empty document list was fetched for this ticket (then it is not fetched again)
+  const docsCachedRef = useRef(false);
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [downloadMsg, setDownloadMsg] = useState('');
+  const [downloading, setDownloading] = useState(null); // null | 'selected' | 'all'
   // persistence key (per ticket)
   const STORAGE_KEY = `SingleTicketState_${ticketId || 'global'}`;
   const [selectedFileIds, setSelectedFileIds] = useState([]);
@@ -32,7 +48,7 @@ const SingleTicket = () => {
   const [expandedPreventives, setExpandedPreventives] = useState({});
   const { t } = useTranslation('singleTicket');
 
-  const url = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions/';
+  const url = API_BASE_URL;
 
   const statusColors = useMemo(() => ({
     "In progress": "bg-yellow-100 text-yellow-600",
@@ -58,49 +74,139 @@ const SingleTicket = () => {
     "Completed": "bg-pink-600 text-pink-600",
   }), []);
 
+  // Location / equipment: from the ticket while it is linked to an equipment (to_db_table_id = project).
+  // Once escalated in the portal the ticket is linked to the new work order (to_db_table_id = jobs), so the
+  // location then comes from that work order (its equipment = jobs.project_id, its address).
+  const location = useMemo(() => {
+    if (ticket?.project_name || ticket?.project_db_address_street) {
+      return {
+        street: ticket.project_db_address_street,
+        zip: ticket.project_db_address_zip,
+        city: ticket.project_db_address_city,
+        phone: ticket.project_db_address_phone,
+        equipmentName: ticket.project_name,
+        equipmentId: ticket.to_id_in_table,
+      };
+    }
+    if (ticketWorkOrder?.project_name || ticketWorkOrder?.db_address_street) {
+      return {
+        street: [ticketWorkOrder.db_address_street, ticketWorkOrder.db_address_street_number].filter(Boolean).join(' '),
+        zip: ticketWorkOrder.db_address_zip,
+        city: ticketWorkOrder.db_address_city,
+        phone: ticketWorkOrder.db_address_phone,
+        equipmentName: ticketWorkOrder.project_name,
+        equipmentId: ticketWorkOrder.project_id,
+      };
+    }
+    return null;
+  }, [ticket, ticketWorkOrder]);
+
   useEffect(() => {
     if (downloadMsg) {
       toast.success("Downloading!");
     }
   }, [downloadMsg]);
 
+  // Drop documents of a previously viewed ticket; they are reloaded when the Documents tab opens
   useEffect(() => {
-    const getTicketAndWorkOrderDetails = async () => {
+    setDoc([]);
+    setFileThumbnails({});
+    setDocsReady(false);
+    docsCachedRef.current = false;
+  }, [ticketId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Linked work order (also the source of Location and Equipment for escalated tickets):
+    // - ticket attached to a work order (to_db_table_id = jobs): that work order
+    // - otherwise: the work order created from this ticket (escalated), as in the legacy ServiceDesk
+    const loadLinkedWorkOrder = async (ticketData) => {
+      try {
+        let workOrder = null;
+        const attachedToJob = ticketData?.to_db_table_id?.toLowerCase() === DB_TABLE_ID_JOBS
+          && ticketData?.to_id_in_table && ticketData.to_id_in_table !== EMPTY_GUID;
+
+        if (attachedToJob) {
+          workOrder = await fetchDocuments(`api/JobsView(${ticketData.to_id_in_table})`, 'GET', auth.authKey);
+        } else {
+          const response = await fetchDocuments(
+            `api/JobsView?$filter=source_db_table_id+eq+${DB_TABLE_ID_TICKET}+and+source_id_in_table+eq+${ticketId}`,
+            'GET', auth.authKey);
+          workOrder = Array.isArray(response) ? response[0] : response?.value?.[0];
+        }
+        if (!cancelled) setTicketWorkOrder(workOrder?.id ? workOrder : undefined);
+      } catch (err) {
+        console.warn("Linked work order could not be loaded:", err);
+      }
+    };
+
+    const getTicketDetails = async () => {
       if (!ticketId || !auth?.authKey) {
         setError(t('single_ticket_page_err_no_ticket_id_auth'));
         setLoading(false);
         return;
       }
 
+      setTicketWorkOrder(undefined);
       try {
-        // Fetch Ticket
-        const ticketEndpoint = `api/TaskView(${ticketId})`;
-        const ticketData = await fetchDocuments(ticketEndpoint, 'GET', auth.authKey);
+        const ticketData = await fetchDocuments(`api/TaskView(${ticketId})`, 'GET', auth.authKey);
+        if (cancelled) return;
+        // Wait for the linked work order so Location and Equipment / Linked to Work Order are complete when
+        // the loading ends (a failure there is caught in loadLinkedWorkOrder and does not block the page)
+        await loadLinkedWorkOrder(ticketData);
+        if (cancelled) return;
         setTicket(ticketData);
-
-        // Fetch Work Order if available
-        if (ticketData?.to_id_in_table) {
-          const workOrderId = ticketData.to_id_in_table;
-          const workOrderEndpoint = `api/JobsView/GetAllJobsLinkToProject?project_id=${workOrderId}`;
-          const workOrderData = await fetchDocuments(workOrderEndpoint, 'GET', auth.authKey);
-          setTicketWorkOrder(workOrderData);
-        }
-
-        // Fetch Ticket Documents
-        const docEndpoint = `api/DbFileView?$filter=db_table_name+eq+%27task%27+and+id_in_table+eq+${ticketId}`;
-        const docData = await fetchDocuments(docEndpoint, 'GET', auth.authKey);
-        setDoc(docData.value || []);
+        // Ticket documents are loaded lazily when the Documents tab is opened (see below)
       } catch (err) {
-        console.error("Error fetching ticket/work order/docs:", err);
-        setError(t('single_ticket_page_err_failed_to_fetch_all'));
+        console.error("Error fetching ticket:", err);
+        if (!cancelled) setError(t('single_ticket_page_err_failed_to_fetch_all'));
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    getTicketAndWorkOrderDetails();
+    getTicketDetails();
+    return () => { cancelled = true; };
   }, [auth?.authKey, ticketId, t]);
 
+
+  // Load the document list when the Documents tab is opened. Once files were loaded they are
+  // cached for this ticket; an empty result is fetched again on the next open, so files that
+  // were not yet available the first time show up without a page refresh.
+  useEffect(() => {
+    if (activeTab !== "documents" || !ticketId || !auth?.authKey) return undefined;
+    if (docsCachedRef.current) return undefined;
+    let cancelled = false;
+
+    const refreshDocuments = async () => {
+      try {
+        const docEndpoint = `api/DbFileView?$filter=db_table_name+eq+%27task%27+and+id_in_table+eq+${ticketId}`;
+        const docData = await fetchDocuments(docEndpoint, 'GET', auth.authKey);
+        if (cancelled) return;
+        const fresh = docData?.value || [];
+        docsCachedRef.current = fresh.length > 0;
+        // Keep the current array when nothing changed to avoid re-downloading thumbnails
+        setDoc((prev) => {
+          const same =
+            prev.length === fresh.length &&
+            prev.every((d, i) => d.id === fresh[i].id);
+          return same ? prev : fresh;
+        });
+      } catch (err) {
+        console.error("Error refreshing ticket documents:", err);
+      } finally {
+        if (!cancelled) setDocsReady(true);
+      }
+    };
+
+    refreshDocuments();
+    return () => {
+      cancelled = true;
+      // Nothing cached yet: show the loading state again the next time the tab opens
+      if (!docsCachedRef.current) setDocsReady(false);
+    };
+  }, [activeTab, ticketId, auth?.authKey]);
 
   useEffect(() => {
     const GetFileThumbnails = async () => {
@@ -152,11 +258,20 @@ const SingleTicket = () => {
 
 
   const handleDownloadAll = async () => {
-    await downloadFiles(url, auth.authKey, doc.map(d => d.id));
-    setDownloadMsg("Downloading all files...");
+    if (downloading) return;
+    setDownloading('all');
+    try {
+      await downloadFiles(url, auth.authKey, doc.map(d => d.id));
+      setDownloadMsg("Downloading all files...");
+    } catch (err) {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   const handleDownloadSelected = async () => {
+    if (downloading) return;
     const ids = selectedFiles.map(f => f.id);
 
     let fallbackName = "download.zip";
@@ -167,8 +282,15 @@ const SingleTicket = () => {
       }
     }
 
-    await downloadFiles(url, auth.authKey, ids, fallbackName);
-    setDownloadMsg("Downloading selected files...");
+    setDownloading('selected');
+    try {
+      await downloadFiles(url, auth.authKey, ids, fallbackName);
+      setDownloadMsg("Downloading selected files...");
+    } catch (err) {
+      toast.error("Download failed. Please try again.");
+    } finally {
+      setDownloading(null);
+    }
   };
 
   // Restore small UI state on mount (tab, selected file ids, expanded rows)
@@ -302,28 +424,31 @@ const SingleTicket = () => {
                 <h4 className="block text-zinc-900 text-base font-semibold leading-normal">{t("single_ticket_page_location_equipment")}</h4>
                 <hr className='my-2 w-32 border-gray-300' />
                 <ul className="list-none list-inside text-slate-500 text-base font-medium">
-                  {ticket?.project_db_address_street ? (
+                  {location?.street ? (
                     <li className='flex items-center'>
                       <span className="w-8 flex"><MapPin className='w-4 h-4 mr-2' /></span>
-                      <span className="flex-1">{ticket?.project_db_address_street}</span>
+                      <span className="flex-1">{location.street}</span>
                     </li>) : ''}
-                  {ticket?.project_db_address_zip || ticket?.project_db_address_city ? (
+                  {location?.zip || location?.city ? (
                     <li className='ml-6 pb-1'>
-                      {ticket?.project_db_address_zip} {ticket?.project_db_address_city}
+                      {location.zip} {location.city}
                     </li>) : ''}
-                  {ticket?.project_db_address_phone ? (
+                  {location?.phone ? (
                     <li className='flex items-center pb-1'>
                       <span className="w-8 flex"><Phone className='w-4 h-4 mr-2' /></span>
-                      <span className="flex-1">{ticket?.project_db_address_phone}</span>
+                      <span className="flex-1">{location.phone}</span>
                     </li>) : ''}
-                  {ticket?.project_name && (
+                  {location?.equipmentName && (
                     <li
-                      className={`flex items-center ${ticket?.to_id_in_table !== '00000000-0000-0000-0000-000000000000' ? 'cursor-pointer' : ''}`}
+                      className={`flex items-center ${location.equipmentId && location.equipmentId !== EMPTY_GUID ? 'cursor-pointer' : ''}`}
                     >
                       <span className="w-8 flex"><Wrench className='w-4 h-4 mr-2' /></span>
-                      <span className="flex justify-between flex-1">{ticket.project_name}
-                        {ticket?.to_id_in_table !== '00000000-0000-0000-0000-000000000000' && (
-                          <a href={`/service-desk/equipment/${ticket?.to_id_in_table}`} className="" rel="noreferrer" target='_blank'><ExternalLink className="ml-2 w-5 h-5" /></a>
+                      <span className="flex justify-between flex-1">{location.equipmentName}
+                        {location.equipmentId && location.equipmentId !== EMPTY_GUID && (
+                          <a href={appUrl(`/equipment/${location.equipmentId}`)} className=""
+                            onClick={(e) => { e.preventDefault(); openAppPageInNewTab(`/equipment/${location.equipmentId}`); }}>
+                            <ExternalLink className="ml-2 w-5 h-5" />
+                          </a>
                         )}
                       </span>
                     </li>
@@ -378,7 +503,7 @@ const SingleTicket = () => {
               </div>
             </div>
 
-            <div className={`grid grid-cols-1 ${ticketWorkOrder?.name ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-8 row-start-2`}>
+            <div className={`grid grid-cols-1 ${ticketWorkOrder ? 'md:grid-cols-3' : 'md:grid-cols-2'} gap-8 row-start-2`}>
               {/* <div className={`grid grid-cols-3 gap-8 row-start-2`}> */}
               <div className='shadow-sm border rounded-lg p-4 '>
                 <h4 className="text-zinc-900 text-base font-semibold leading-normal">{t('single_ticket_page_severity')}</h4>
@@ -402,13 +527,13 @@ const SingleTicket = () => {
                 </ul>
               </div>
 
-              {ticketWorkOrder?.name && (
+              {ticketWorkOrder && (
                 <div className='shadow-sm border rounded-lg p-4 '>
                   <h4 className="text-zinc-900 text-base font-semibold leading-normal">{t('single_ticket_page_linked_wo')}</h4>
                   <hr className='my-2 w-32 border-gray-300' />
                   <ul className="list-none list-inside text-slate-500 text-base font-medium">
-                    <li className='flex justify-between items-center pb-1 cursor-pointer' onClick={() => navigate(`/workorder/${ticketWorkOrder?.id}`)}>
-                      {ticketWorkOrder?.id2} <ExternalLink className="ml-2 w-5 h-5" />
+                    <li className='flex justify-between items-center pb-1 cursor-pointer' onClick={() => openAppPageInNewTab(`/workorder/${ticketWorkOrder.id}`)}>
+                      {ticketWorkOrder.reference_back_office?.trim() || ticketWorkOrder.id2} <ExternalLink className="ml-2 w-5 h-5" />
                     </li>
                     <li className='flex items-center pb-1'>{ticketWorkOrder?.job_type_name}</li>
                     <li className='flex items-center pb-1'>{ticketWorkOrder?.name}</li>
@@ -451,7 +576,11 @@ const SingleTicket = () => {
                 </div>
               )
             }
-            {doc?.length > 0 ? (
+            {!docsReady ? (
+              <div className="flex items-center justify-center p-10" role="status" aria-live="polite">
+                <Loader className="w-10 h-10 text-primary animate-spin" />
+              </div>
+            ) : doc?.length > 0 ? (
               <div className='grid grid-cols-1 md:grid-cols-4 gap-4'>
                 {doc.map(item => (
                   <div key={item.id} className="p-2 flex flex-col border rounded-lg shadow-md">
@@ -533,18 +662,28 @@ const SingleTicket = () => {
             {!fileThumbnails && (!doc || doc.length === 0) && (
               <p className="text-gray-400 p-4 text-center">{t("single_ticket_page_no_document")}</p>
             )}
-            {doc.length > 0 && (
+            {docsReady && doc.length > 0 && (
               <div className='flex justify-end mt-4'>
                 {selectedFiles.length !== 0 && (
                   <button
                     onClick={handleDownloadSelected}
-                    className="w-48 px-4 py-2 bg-primary border border-2 border-primary rounded-lg flex items-center justify-center text-primary-foreground text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
-                    {t("single_ticket_page_download_button")} <Download className="ml-2 w-6 h-5" />
+                    disabled={!!downloading}
+                    aria-busy={downloading === 'selected'}
+                    className="w-48 px-4 py-2 bg-primary border border-2 border-primary rounded-lg flex items-center justify-center text-primary-foreground text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] disabled:opacity-60 disabled:cursor-not-allowed">
+                    {t("single_ticket_page_download_button")}{" "}
+                    {downloading === 'selected'
+                      ? <Loader className="ml-2 w-5 h-5 animate-spin" />
+                      : <Download className="ml-2 w-6 h-5" />}
                   </button>)}
                 <button
                   onClick={handleDownloadAll}
-                  className="w-48 px-4 py-2 ml-2 bg-primary-foreground border border-2 border-primary rounded-lg flex items-center justify-center text-primary text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)]">
-                  {t("single_ticket_page_download_all_button")} <Download className="ml-2 w-6 h-5" />
+                  disabled={!!downloading}
+                  aria-busy={downloading === 'all'}
+                  className="w-48 px-4 py-2 ml-2 bg-primary-foreground border border-2 border-primary rounded-lg flex items-center justify-center text-primary text-base font-medium leading-normal hover:bg-primary/20 hover:text-primary hover:shadow-[0px_1px_2px_0px_rgba(16,24,40,0.05)] disabled:opacity-60 disabled:cursor-not-allowed">
+                  {t("single_ticket_page_download_all_button")}{" "}
+                  {downloading === 'all'
+                    ? <Loader className="ml-2 w-5 h-5 animate-spin" />
+                    : <Download className="ml-2 w-6 h-5" />}
                 </button>
               </div>
             )}

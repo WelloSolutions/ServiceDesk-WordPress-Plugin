@@ -23,5 +23,8 @@
   "equipments_list_table_heading_type_text": "Type",
   "equipments_list_table_pagination_of": "van",
   "equipments_list_table_pagination_page": "Pagina",
-  "equipments_list_table_pagination_show": "Toon"
+  "equipments_list_table_pagination_show": "Toon",
+  "equipments_list_no_results": "Geen installaties gevonden.",
+  "equipments_list_show_more": "Meer tonen (nog {{count}})",
+  "equipments_list_branch_context": "Voldoet niet aan de filters: getoond omdat een installatie eronder dat wel doet."
 }

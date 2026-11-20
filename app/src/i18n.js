@@ -81,7 +81,12 @@ import documents_en from './locales/en/documents.json';
 import documents_fr from './locales/fr/documents.json';
 import documents_nl from './locales/nl/documents.json';
 
-const dynamicLang = localStorage.getItem('i18nextLng');
+// Shared labels (e.g. column filters)
+import common_en from './locales/en/common.json';
+import common_fr from './locales/fr/common.json';
+import common_nl from './locales/nl/common.json';
+
+const dynamicLang = localStorage.getItem('i18nextLng') || 'en';
 
 i18n
   .use(initReactI18next)
@@ -104,6 +109,7 @@ i18n
         singleEquipment: singleEquipment_en,
         createTicket: createTicket_en,
         documents: documents_en,
+        common: common_en,
       },
       fr: {
         home: home_fr,
@@ -122,6 +128,7 @@ i18n
         singleEquipment: singleEquipment_fr,
         createTicket: createTicket_fr,
         documents: documents_fr,
+        common: common_fr,
       },
       nl: {
         home: home_nl,
@@ -140,6 +147,7 @@ i18n
         singleEquipment: singleEquipment_nl,
         createTicket: createTicket_nl,
         documents: documents_nl,
+        common: common_nl,
       },
     },
     lng: dynamicLang,
@@ -161,6 +169,7 @@ i18n
       'singleEquipment',
       'createTicket',
       'documents',
+      'common',
     ],
     defaultNS: 'home',
     interpolation: {

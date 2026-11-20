@@ -71,5 +71,6 @@
   "create_ticket_table_heading_reference_text": "Klantreferentie",
   "create_ticket_table_heading_serial_number_text": "Serienummer",
   "create_ticket_table_heading_status_text": "Status",
-  "create_ticket_table_heading_type_text": "Type"
+  "create_ticket_table_heading_type_text": "Type",
+  "create_ticket_failed_load_equipment": "De installatie kon niet worden geladen. Probeer het opnieuw."
 }

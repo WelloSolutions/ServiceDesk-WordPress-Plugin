@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { API_BASE_URL } from '../config';
 import { useParams } from 'react-router-dom';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { downloadFiles } from "../services/apiServiceDownloads";
@@ -6,10 +7,13 @@ import { useTable, useSortBy, usePagination } from 'react-table';
 import { ToastContainer, toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
-import { ExternalLink, LayoutGrid, List, CalendarClock, File, FileText, Loader, Eye, ArrowLeft, ArrowUpRight, ArrowDownLeft, Circle, MapPin, Phone, Image, Wrench, ArrowDown, ArrowUp, ArrowLeftToLine, ArrowRightToLine, ArrowRight, BadgeInfo, Download } from "lucide-react";
+import { ExternalLink, LayoutGrid, List, CalendarClock, File, FileText, Loader, Eye, ArrowLeft, ArrowUpRight, ArrowDownLeft, Circle, MapPin, Phone, Image, Wrench, ArrowDown, ArrowUp, ArrowLeftToLine, ArrowRightToLine, ArrowRight, BadgeInfo, Download, Link as LinkIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
 import axios from 'axios';
+import { TableSkeletonRows } from '../utils/setTableSkleton.js';
+
+const EMPTY_GUID = '00000000-0000-0000-0000-000000000000';
 
 const SingleInstallation = () => {
   const navigate = useNavigate();
@@ -55,6 +59,8 @@ const SingleInstallation = () => {
   const [blobUrls, setBlobUrls] = useState({});
   const [docsLoaded, setDocsLoaded] = useState(false);
   const [wordOrderLoaded, setWordOrderLoaded] = useState(false);
+  // Work orders tab: own loading flag (the page-level `loading` replaces the whole page with a spinner)
+  const [wordOrderLoading, setWordOrderLoading] = useState(false);
   const [contractLoaded, setContractLoaded] = useState(false);
   const [translationsLoaded, setTranslationsLoaded] = useState(false);
 
@@ -62,7 +68,7 @@ const SingleInstallation = () => {
 
   const { t, i18n } = useTranslation('singleEquipment');
 
-  const url = process.env.REACT_APP_API_URL || 'https://servicedeskapi.wello.solutions/';
+  const url = API_BASE_URL;
 
   const TableLoadingSkeleton = ({ rows = 5, columns = 6 }) => {
     return (
@@ -417,6 +423,7 @@ const SingleInstallation = () => {
 
   useEffect(() => {
     const getInstallationSub = async () => {
+      setWordOrderLoading(true);
       try {
         const endpoint_2 = `api/JobsView/SearchAllJobsOfLocation`;
         //const endpoint_2 = `api/JobsView/SearchAllJobsLinkToProject`;
@@ -428,14 +435,17 @@ const SingleInstallation = () => {
       } catch (err) {
         console.error("Error fetching documents:", err);
         setError('single_equipment_page_err_failed_to_fetch_document');
+        setWordOrderLoaded(true); // no automatic retry loop
+      } finally {
+        setWordOrderLoading(false);
       }
     };
 
-    // Only fetch work orders when the Work Order tab is active and not already loaded
-    if (InstallationId && activeTab === 'wordOrder' && !wordOrderLoaded) {
+    // Only fetch work orders when the Work Order tab is active and not already loaded (or loading)
+    if (InstallationId && activeTab === 'wordOrder' && !wordOrderLoaded && !wordOrderLoading) {
       getInstallationSub();
     }
-  }, [auth, InstallationId, activeTab, wordOrderLoaded]);
+  }, [auth, InstallationId, activeTab, wordOrderLoaded, wordOrderLoading]);
 
   useEffect(() => {
     const getContractDetails = async () => {
@@ -482,13 +492,9 @@ const SingleInstallation = () => {
         setBomError(null);
       }
       try {
-        const baseUrl =
-          process.env.REACT_APP_API_URL ||
-          'https://testservicedeskapi.odysseemobile.com/';
-        const normalizedBase = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
 
         const response = await axios({
-          url: `${normalizedBase}api/ProjectBillOfMaterial/GetByProject?$filter=project_id eq ${installation.id}`,
+          url: `${url}/api/ProjectBillOfMaterial/GetByProject?$filter=project_id eq ${installation.id}`,
           method: 'GET',
           headers: {
             'Authorization': `Basic ${auth.authKey}`,
@@ -522,7 +528,7 @@ const SingleInstallation = () => {
     return () => {
       isMounted = false;
     };
-  }, [auth?.authKey, installation?.id, activeTab]);
+  }, [auth?.authKey, installation?.id, activeTab, url]);
 
   // Reset pagination when bomData changes
   useEffect(() => {
@@ -609,11 +615,21 @@ const SingleInstallation = () => {
 
           const showCalendarIcon = row.original.job_planning_count > 1;
           const showFileIcon = row.original.nb_notes > 0;
+          // Group work order: a root work order that has sub work orders (legacy jobs_chain icon).
+          // SearchAllJobsOfLocation only returns root work orders; the parent field is _parent_id.
+          const showGroupIcon = row.original.has_child === true &&
+            (!row.original._parent_id || row.original._parent_id === EMPTY_GUID);
 
           return (
             <span className="flex justify-between items-center gap-2" >
               <span>{displayDate}</span>
-              < span className="flex gap-2 justify-end">
+              < span className="flex gap-2 justify-end pr-6">
+                {showGroupIcon && (
+                  <LinkIcon
+                    className="w-5 h-5 cursor-pointer"
+                    onClick={() => navigate(`/workorder/${row.original.id}`)}
+                  />
+                )}
                 {showCalendarIcon && (
                   <CalendarClock
                     className="w-5 h-5 cursor-pointer"
@@ -689,7 +705,7 @@ const SingleInstallation = () => {
         ),
       },
     ],
-    [jobsType, jobsStatus, statusJob, handleCalendarClick, handleRemarksClick, t, i18n]
+    [jobsType, jobsStatus, statusJob, handleCalendarClick, handleRemarksClick, navigate, t, i18n]
   );
 
   // Create table instance with pagination
@@ -1245,7 +1261,18 @@ const SingleInstallation = () => {
                   })}
                 </thead>
                 <tbody {...getTableBodyProps()} className="bg-white divide-y divide-gray-200">
-                  {!loading &&
+                  {/* Skeleton inside the table, lined up with the columns, while the work orders load */}
+                  {(wordOrderLoading || !wordOrderLoaded) && (
+                    <TableSkeletonRows rows={5} columns={headerGroups[0]?.headers.length || 6} wideColumns={[2]} />
+                  )}
+                  {wordOrderLoaded && !wordOrderLoading && wordOrder.length === 0 && (
+                    <tr>
+                      <td colSpan={headerGroups[0]?.headers.length || 6} className="px-2 py-6 text-center text-base text-slate-500">
+                        {t("single_equipment_page_no_record")}
+                      </td>
+                    </tr>
+                  )}
+                  {wordOrderLoaded && !wordOrderLoading &&
                     page.map(row => {
                       prepareRow(row);
                       const { key: rowKey, ...restRowProps } = row.getRowProps();
@@ -1422,9 +1449,6 @@ const SingleInstallation = () => {
                 </select>
               </div>
             )}
-            {loading &&
-              <TableLoadingSkeleton rows={5} columns={5} />
-            }
           </>
         ) : activeTab === 'contractEntitlements' ? (
           <div className='grid grid-cols-1 md:grid-cols-3 gap-4 px-2 md:px-12 pb-12'>

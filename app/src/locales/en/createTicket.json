@@ -76,5 +76,6 @@
   "create_ticket_created_successfully": "Ticket created successfully!",
   "create_ticket_failed_create_ticket": "Failed to create ticket. Please try again.",
   "create_ticket_error_missing_identifiers": "Missing ticket identifiers.",
-  "create_ticket_failed_upload_files.": "Failed to upload files."
+  "create_ticket_failed_upload_files.": "Failed to upload files.",
+  "create_ticket_failed_load_equipment": "Could not load the equipment. Please try again."
 }

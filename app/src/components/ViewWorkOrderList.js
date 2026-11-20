@@ -1,25 +1,63 @@
-import React, { useMemo, useState, useEffect, useCallback } from 'react';
+import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
+import { APP_BASENAME } from '../config';
 import { useTable, useSortBy, useExpanded, usePagination } from 'react-table';
 import { fetchDocuments } from '../services/apiServiceDocuments';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, ChevronsLeft, ChevronsRight, BadgeInfo, Circle, CalendarClock, FileText } from 'lucide-react';
+import { ArrowUp, ArrowDown, ArrowLeft, ArrowRight, ArrowLeftToLine, ArrowRightToLine, BadgeInfo, Circle, CalendarClock, FileText, X } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useTranslation } from "react-i18next";
 import { setPrimaryTheme } from "../utils/setTheme";
-import { TableLoadingSkeleton } from '../utils/setTableSkleton.js';
+import { TableSkeletonRows } from '../utils/setTableSkleton.js';
+import ColumnFilter, { isFilterActive } from './ColumnFilter';
+
+// SD-511: sorting is done by the API (JobsView/SearchPaged). Rows are loaded in blocks of BLOCK_SIZE and
+// cached per tab + sort until the user leaves the screen; pages are cut from the cached blocks.
+const PAGE_SIZES = [12, 24, 36, 48];
+const BLOCK_SIZE = 144; // divisible by every page size, so a page always fits in one block
+const DATE_COLUMN_ID = 'planned_or_closed_date'; // planned date on the open tab, closing date on the completed tab
+
+// Table column id -> filter column of JobsView/SearchPaged (the date column depends on the tab)
+const FILTER_COLUMNS = {
+  id2: 'reference',
+  name: 'name',
+  db_address_street: 'address',
+  job_type_name: 'job_type',
+  job_status_name: 'job_status',
+};
+
+const toApiFilters = (filters, isCompleted) =>
+  Object.entries(filters)
+    .filter(([, filter]) => isFilterActive(filter))
+    .map(([columnId, filter]) => ({
+      column: columnId === DATE_COLUMN_ID ? (isCompleted ? 'date_closed' : 'first_planning_date') : FILTER_COLUMNS[columnId],
+      op: filter.op,
+      value: filter.value ?? null,
+      value2: filter.value2 ?? null,
+      values: filter.values ?? null,
+    }))
+    .filter(filter => filter.column);
 
 const ViewWorkOrderList = () => {
   const navigate = useNavigate();
   const { auth } = useAuth();
   setPrimaryTheme(auth?.colorPrimary);
   const [jobs, setJobs] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [pageCount, setPageCount] = useState(1);
   const [jobsStatus, setJobsStatus] = useState([]);
   const [jobsType, setJobsType] = useState([]);
   const [translationsLoaded, setTranslationsLoaded] = useState(false);
-  //const [loading, setLoading] = useState(true);
-  const [startRow, setStartRow] = useState(0);
-  const [endRow, setEndRow] = useState(500);
   const [isLoading, setIsLoading] = useState(true);
+  // Column filters: table column id -> { op, value, value2, values }
+  const [filters, setFilters] = useState({});
+  const setColumnFilter = useCallback((columnId, filter) => {
+    setFilters(prev => {
+      const next = { ...prev };
+      if (filter) next[columnId] = filter; else delete next[columnId];
+      return next;
+    });
+  }, []);
+  const hasFilters = Object.values(filters).some(isFilterActive);
   const [isCompleted, setIsCompleted] = useState(false);
   const [error, setError] = useState(null);
   const [selectedTab, setSelectedTab] = useState('open');
@@ -34,6 +72,7 @@ const ViewWorkOrderList = () => {
   const [loadingMap, setLoadingMap] = useState({});
 
   const { t, i18n } = useTranslation('workOrderList');
+  const { t: tCommon } = useTranslation('common');
 
   useEffect(() => {
     if (translationsLoaded) return;
@@ -205,41 +244,6 @@ const ViewWorkOrderList = () => {
     }
   }), []);
 
-  useEffect(() => {
-    const fetchWorkOrder = async (completedStatus, startRow = 0, endRow = 500) => {
-      setIsLoading(true); // Trigger loading immediately on tab switch
-      try {
-        const endpoint = `api/JobsView/Search`;
-        const payload = {
-          is_get_completed: completedStatus,
-          query_object: {
-            startRow: startRow,
-            endRow: endRow,
-            rowGroupCols: [],
-            valueCols: [],
-            pivotCols: [],
-            pivotMode: false,
-            groupKeys: [],
-            filterModel: {},
-            sortModel: []
-          }
-        };
-        const response = await fetchDocuments(endpoint, 'POST', auth.authKey, payload);
-        if (response) {
-          setJobs(response);
-          // setLoading(false);
-        }
-      } catch (err) {
-        setError(err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchWorkOrder(isCompleted, startRow, endRow);
-  }, [isCompleted, auth, startRow, endRow]);
-
-
   const handleCalendarClick = useCallback(async (rowId) => {
     // if same row clicked again, toggle collapse
     if (expandedRowId === rowId && activeSection === "popup") {
@@ -288,16 +292,28 @@ const ViewWorkOrderList = () => {
   }, [expandedRowId, activeSection, remarksDataMap]);
 
 
+  // Options of the type / status filters: id + name in the current language (same as the cells)
+  const toFilterOptions = useCallback((list) => {
+    const lang = i18n.language.split("-")[0].toUpperCase();
+    return (Array.isArray(list) ? list : [])
+      .map(item => ({
+        value: String(item.id),
+        label: item.translations?.find(tr => tr.language_code === lang)?.value ?? item.name ?? '',
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [i18n.language]);
+
   const columns = useMemo(
     () => [
       {
-        id: '1',
+        id: DATE_COLUMN_ID,
         Header: () =>
           !isCompleted
             ? t('work_order_list_table_heading_planned_date_text')
             : t('work_order_list_table_heading_closing_date_text'),
 
         accessor: row => !isCompleted ? row.first_planning_date : row.date_closed,
+        filterType: 'date',
 
         Cell: ({ row, value }) => {
           const displayDate =
@@ -335,6 +351,7 @@ const ViewWorkOrderList = () => {
       },
       {
         Header: t('work_order_list_table_heading_reference_text'), accessor: 'id2',
+        filterType: 'text', // the back office reference may contain letters
         Cell: ({ row }) => (
           <div className="text-center">
             <span className="font-medium">
@@ -345,10 +362,16 @@ const ViewWorkOrderList = () => {
       },
       {
         Header: t('work_order_list_table_heading_name_text'), accessor: 'name',
-        Cell: ({ value }) => value.length > 30 ? value.slice(0, 30) + '...' : value
+        filterType: 'text',
+        Cell: ({ value }) => {
+          const text = value ?? '';
+          return text.length > 30 ? text.slice(0, 30) + '...' : text;
+        }
       },
       {
         Header: t('work_order_list_table_heading_address_text'), accessor: 'db_address_street',
+        filterType: 'text',
+        filterOps: ['contains'],
         Cell: ({ row }) => (
           <span>
             {row.original.db_address_street} {row.original.db_address_city} {row.original.db_address_zip}
@@ -357,6 +380,8 @@ const ViewWorkOrderList = () => {
       },
       {
         Header: t('work_order_list_table_heading_type_text'), accessor: 'job_type_name',
+        filterType: 'options',
+        filterOptions: toFilterOptions(jobsType),
         Cell: ({ row }) => (
           <span className={`text-base`}>
             {
@@ -370,6 +395,8 @@ const ViewWorkOrderList = () => {
       },
       {
         Header: t('work_order_list_table_heading_status_text'), accessor: 'job_status_name',
+        filterType: 'options',
+        filterOptions: toFilterOptions(jobsStatus),
         Cell: ({ row }) => (
           <span className={`text-base min-w-max inline-flex items-center font-medium pe-3 px-2 pb-1 pt-1 rounded-full ${statusJob[row.original.job_status_id]?.statusColors || "bg-gray-200 text-gray-800"}`}>
             <Circle className={`inline w-2 h-2 mr-1 rounded-full ${statusJob[row.original.job_status_id]?.statusDotColors || "bg-gray-800 text-gray-800"}`} /> {row.original.project_status_name}
@@ -383,7 +410,7 @@ const ViewWorkOrderList = () => {
         ),
       },
     ],
-    [jobsType, jobsStatus, statusJob, isCompleted, handleCalendarClick, handleRemarksClick, t, i18n.language]
+    [jobsType, jobsStatus, statusJob, isCompleted, handleCalendarClick, handleRemarksClick, t, i18n.language, toFilterOptions]
   );
 
 
@@ -396,22 +423,118 @@ const ViewWorkOrderList = () => {
     prepareRow,
     canPreviousPage,
     canNextPage,
-    pageOptions,
     gotoPage,
     nextPage,
     previousPage,
     setPageSize,
-    state: { pageIndex, pageSize },
+    state: { pageIndex, pageSize, sortBy },
   } = useTable(
     {
       columns,
       data: jobs,
-      initialState: { pageIndex: 0, pageSize: 12 }, // Set initial page size to 10
+      manualPagination: true,
+      manualSortBy: true,
+      pageCount,
+      autoResetPage: false,
+      autoResetSortBy: false,
+      autoResetExpanded: false,
+      disableMultiSort: true,
+      initialState: { pageIndex: 0, pageSize: PAGE_SIZES[0] },
     },
     useSortBy,
     useExpanded,
     usePagination,
   );
+
+  // Tab + sort + filters: when it changes the list restarts at the first page
+  const apiFilters = useMemo(() => toApiFilters(filters, isCompleted), [filters, isCompleted]);
+  const queryKey = `${isCompleted}|${JSON.stringify(sortBy)}|${JSON.stringify(apiFilters)}`;
+  const prevQueryKey = useRef(queryKey);
+  const requestSeq = useRef(0);
+  // queryKey -> { total, blocks: Map<blockIndex, rows[]>, pending: Map<blockIndex, Promise> }.
+  // Kept until the user leaves the screen; a page refresh loads fresh data.
+  const cacheRef = useRef(new Map());
+  const authKey = auth?.authKey;
+
+  useEffect(() => {
+    if (prevQueryKey.current !== queryKey) {
+      prevQueryKey.current = queryKey;
+      if (pageIndex !== 0) {
+        gotoPage(0); // the effect runs again for page 0
+        return;
+      }
+    }
+
+    const sort = sortBy[0];
+    // The date column is the planned date on the open tab and the closing date on the completed tab
+    const sortColumn = sort ? (sort.id === DATE_COLUMN_ID ? (isCompleted ? 'date_closed' : 'first_planning_date') : sort.id) : null;
+
+    let entry = cacheRef.current.get(queryKey);
+    if (!entry) {
+      entry = { total: null, blocks: new Map(), pending: new Map() };
+      cacheRef.current.set(queryKey, entry);
+    }
+
+    // Loads one block of BLOCK_SIZE rows once; concurrent calls share the same request
+    const loadBlock = (blockIndex) => {
+      if (entry.blocks.has(blockIndex)) return Promise.resolve();
+      if (entry.pending.has(blockIndex)) return entry.pending.get(blockIndex);
+
+      const payload = {
+        completed: isCompleted,
+        page: blockIndex,
+        pageSize: BLOCK_SIZE,
+        sortBy: sortColumn,
+        sortDesc: sort ? !!sort.desc : false,
+        filters: apiFilters,
+      };
+      const request = fetchDocuments('api/JobsView/SearchPaged', 'POST', authKey, payload)
+        .then(response => {
+          entry.total = response?.total ?? 0;
+          entry.blocks.set(blockIndex, response?.items ?? []);
+        })
+        .finally(() => entry.pending.delete(blockIndex));
+      entry.pending.set(blockIndex, request);
+      return request;
+    };
+
+    const firstRow = pageIndex * pageSize;
+    const blockIndex = Math.floor(firstRow / BLOCK_SIZE); // a page never spans two blocks (BLOCK_SIZE % pageSize === 0)
+    const offset = firstRow % BLOCK_SIZE;
+
+    const show = () => {
+      const rows = entry.blocks.get(blockIndex) ?? [];
+      setJobs(rows.slice(offset, offset + pageSize));
+      setTotal(entry.total);
+      setPageCount(Math.max(1, Math.ceil(entry.total / pageSize)));
+      setError(null);
+      setIsLoading(false);
+
+      // On the last page of a block, load the next block in the background
+      const nextBlockStart = (blockIndex + 1) * BLOCK_SIZE;
+      if (offset + pageSize >= BLOCK_SIZE && nextBlockStart < entry.total) {
+        loadBlock(blockIndex + 1).catch(() => { }); // retried when the page is opened
+      }
+    };
+
+    const seq = ++requestSeq.current;
+    if (entry.blocks.has(blockIndex)) {
+      show();
+      return;
+    }
+
+    setIsLoading(true);
+    loadBlock(blockIndex)
+      .then(() => {
+        if (seq === requestSeq.current) show(); // ignore if the user moved on meanwhile
+      })
+      .catch(err => {
+        if (seq === requestSeq.current) {
+          setError(err);
+          setIsLoading(false);
+        }
+      });
+  }, [queryKey, pageIndex, pageSize, isCompleted, sortBy, apiFilters, gotoPage, authKey]);
 
   // if (loading) {
   //   return <div className="flex w-full items-center justify-center h-screen">
@@ -463,8 +586,15 @@ const ViewWorkOrderList = () => {
 
         </div>
 
-        <div className="bg-blue-100 flex items-center text-blue-500 text-base font-normal px-4 py-1 mb-2 rounded-lg">
-          <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("work_order_list_page_helping_text")}
+        <div className="bg-blue-100 flex items-center justify-between text-blue-500 text-base font-normal px-4 py-1 mb-2 rounded-lg">
+          <span className="flex items-center">
+            <BadgeInfo className='mr-2 w-5 h-5 text-blue-500' /> {t("work_order_list_page_helping_text")}
+          </span>
+          {hasFilters && (
+            <button onClick={() => setFilters({})} className="flex items-center text-sm font-medium text-primary hover:underline">
+              <X className="w-4 h-4 mr-1" /> {tCommon("filter_clear_all")}
+            </button>
+          )}
         </div>
 
         {/* Table displaying filtered jobs */}
@@ -487,11 +617,20 @@ const ViewWorkOrderList = () => {
                           className={`px-2 py-3 text-left whitespace-nowrap text-slate-500 text-base font-medium leading-none ${colIdx !== 0 ? 'border-r border-gray-300' : ''}`}
                         >
                           {column.render('Header')}
+                          {column.filterType && (
+                            <ColumnFilter
+                              type={column.filterType}
+                              ops={column.filterOps}
+                              options={column.filterOptions}
+                              value={filters[column.id]}
+                              onChange={(filter) => setColumnFilter(column.id, filter)}
+                            />
+                          )}
                           {column.isSorted ? (
                             column.isSortedDesc ? (
-                              <ArrowUp className="inline w-4 h-4 ml-1" />
-                            ) : (
                               <ArrowDown className="inline w-4 h-4 ml-1" />
+                            ) : (
+                              <ArrowUp className="inline w-4 h-4 ml-1" />
                             )
                           ) : null}
                         </th>
@@ -520,7 +659,7 @@ const ViewWorkOrderList = () => {
                               key={cellKey || cellIdx}
                               {...restCellProps}
                               className={`self-stretch p-2 text-base font-normal ${cellIdx !== 0 ? 'cursor-pointer' : ''}`}
-                              onClick={cellIdx !== 0 ? () => window.open(`${window.location.origin}/service-desk/workorder/${row.original.id}`, "_blank") : undefined}
+                              onClick={cellIdx !== 0 ? () => window.open(`${window.location.origin}${APP_BASENAME}/workorder/${row.original.id}`, "_blank") : undefined}
                             >
                               {cell.render("Cell")}
                             </td>
@@ -649,46 +788,42 @@ const ViewWorkOrderList = () => {
                     </React.Fragment>
                   );
                 })}
+              {/* Skeleton inside the table: lines up with the columns and keeps the previous page's row count */}
+              {isLoading && (
+                <TableSkeletonRows rows={page.length} columns={columns.length} wideColumns={[2, 3]} />
+              )}
+              {!isLoading && jobs.length === 0 && (
+                <tr>
+                  <td colSpan={columns.length} className="px-2 py-6 text-center text-base text-slate-500">
+                    {t("work_order_list_no_results")}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        {isLoading && (
-          <TableLoadingSkeleton rows={8} columns={6} />
-        )}
-
-        {/* Pagination Controls - Only show if filteredWorkOrder exceed pageSize (10) */}
-        {!isLoading && jobs.length > 12 && (
+        {total > 0 && (
           <div className="flex items-center justify-between p-4">
             <span className="text-base text-slate-700">
-              {t("work_order_list_table_pagination_page")} {pageIndex + 1} {t("work_order_list_table_pagination_of")} {pageOptions.length}
+              {t("work_order_list_table_pagination_page")} {pageIndex + 1} {t("work_order_list_table_pagination_of")} {pageCount}
             </span>
             <div>
-
-              <button onClick={() => {setStartRow(prev => (prev > 0 ? prev - 500 : prev)); setEndRow(prev => (prev > 500 ? prev - 500 : prev));}} disabled={startRow === 0 && endRow === 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                <ChevronsLeft className="w-4" />
-              </button>
-
-              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => gotoPage(0)} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowLeftToLine className="w-4" />
               </button>
-              <button onClick={() => previousPage()} disabled={!canPreviousPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => previousPage()} disabled={!canPreviousPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowLeft className="w-4" />
               </button>
-              <button onClick={() => nextPage()} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => nextPage()} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowRight className="w-4" />
               </button>
-              <button onClick={() => { gotoPage(pageOptions.length - 1) }} disabled={!canNextPage} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
+              <button onClick={() => gotoPage(pageCount - 1)} disabled={!canNextPage || isLoading} className="py-0.5 px-1 md:px-2 mr-1 text-primary rounded-md border border-primary disabled:opacity-50">
                 <ArrowRightToLine className="w-4" />
               </button>
-              
-              <button onClick={() => {setStartRow(prev => prev + 500); setEndRow(prev => prev + 500)}} disabled={jobs.length <= 500} className={`py-0.5 px-1 md:px-2 text-primary rounded-md border border-primary disabled:opacity-50`}>
-                <ChevronsRight className="w-4" />
-              </button>
-
             </div>
             <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))} className="ml-1 p-1 md:p-1 text-base text-slate-700 border border-slate-700 rounded-md max-w-32">
-              {[12, 24, 36, 48].map(size => (
+              {PAGE_SIZES.map(size => (
                 <option key={size} value={size}>
                   {t("work_order_list_table_pagination_show")} {size}
                 </option>
